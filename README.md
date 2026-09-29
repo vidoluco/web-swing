@@ -84,6 +84,7 @@ cd ../.. && node --max-old-space-size=12000 tools/osm-build.mjs bucharest data/p
 | Asset | Source and licence |
 |---|---|
 | Map data | © OpenStreetMap contributors, ODbL, via Geofabrik |
+| Terrain (Brașov) | Copernicus DEM GLO-30, produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA; all rights reserved |
 | Cars | Kenney Car Kit, CC0 |
 | Hero | Mixamo X Bot, from the three.js examples |
 | Textures | ambientCG, CC0; water normals from the three.js examples |
