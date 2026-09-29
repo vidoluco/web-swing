@@ -24,7 +24,10 @@ function stroke(path, T, closed = false) {
   });
   const left = path.map((p, i) => [p[0] + nor[i][0] * h, p[1] + nor[i][1] * h]);
   const right = path.map((p, i) => [p[0] - nor[i][0] * h, p[1] - nor[i][1] * h]);
-  return closed ? { pts: left, hole: right } : { pts: [...left, ...right.reverse()] };
+  if (!closed) return { pts: [...left, ...right.reverse()] };
+  // A ring: the bigger of the two outlines is the outside.
+  const area = (r) => Math.abs(r.reduce((s, p, i) => s + (r[(i + 1) % r.length][0] - p[0]) * (r[(i + 1) % r.length][1] + p[1]), 0));
+  return area(left) > area(right) ? { pts: left, hole: right } : { pts: right, hole: left };
 }
 
 function arcPts(cx, cy, rx, ry, from, to, steps) {
@@ -133,42 +136,42 @@ export class HillSign {
     city.scene.add(mesh);
     this.mesh = mesh;
     for (const g of slabs) g.dispose();
-    // No trees in front of, on and behind the letters; a meadow instead.
-    const a = L / 2 + 14, c0 = -16, c1 = 34;
+    // No trees in front of, on and behind the letters; a meadow instead, an oval a little longer than the row.
+    const ra = L / 2 + 14, rc = 26, cc = 8;
     (city.clearings ||= []).push((x, z) => {
       const dx = x - cfg.x, dz = z - cfg.z;
-      const pa = dx * ux + dz * uz, pc = dx * fx + dz * fz;
-      return pa > -a && pa < a && pc > c0 && pc < c1;
+      return (((dx * ux + dz * uz) / ra) ** 2) + ((((dx * fx + dz * fz) - cc) / rc) ** 2) < 1;
     });
-    const ring = [[-a, c0], [a, c0], [a, c1], [-a, c1]].flatMap(([pa, pc]) => this.at(pa, pc));
+    const ring = Array.from({ length: 36 }, (_, i) => this.at(Math.cos((i / 36) * Math.PI * 2) * ra, cc + Math.sin((i / 36) * Math.PI * 2) * rc)).flat();
     (city.extraGreens ||= []).push(['grass', ring, []]);
     this.length = L;
   }
 
-  // The shapes of one letter as solids: 1 m cells that lie inside a shape, merged into rectangles.
+  // The shapes of one letter as solids: 1 m columns cut into runs of material, neighbouring columns
+  // with the same run joined. Every solid stands from the bottom to the top of a piece of the letter,
+  // so the front of a letter is a wall she can climb and its top edges are edges she can vault onto.
   solidsFor(parts, a0, base) {
     const cols = Math.ceil(this.width / CELL) + 1, rows = Math.ceil(this.height / CELL);
     const inside = (a, b) => parts.some((p) => inPoly(a, b, p.pts) && !(p.hole && inPoly(a, b, p.hole)));
-    const runs = [];
-    for (let j = 0; j < rows; j++) {
-      let start = -1;
-      for (let i = 0; i <= cols; i++) {
-        const on = i < cols && inside((i + 0.5) * CELL, (j + 0.5) * CELL);
-        if (on && start < 0) start = i;
+    const open = new Map(); // "j0,j1" -> solid being extended to the right
+    const done = [];
+    for (let i = 0; i <= cols; i++) {
+      const runs = new Map();
+      for (let j = 0, start = -1; i < cols && j <= rows; j++) {
+        const on = j < rows && inside((i + 0.5) * CELL, (j + 0.5) * CELL);
+        if (on && start < 0) start = j;
         if (!on && start >= 0) {
-          runs.push({ i0: start, i1: i, j0: j, j1: j + 1 });
+          runs.set(`${start},${j}`, [start, j]);
           start = -1;
         }
       }
+      for (const [k, m] of open) {
+        if (runs.has(k)) runs.delete(k), (m.i1 = i + 1);
+        else (done.push(m), open.delete(k));
+      }
+      for (const [k, [j0, j1]] of runs) open.set(k, { i0: i, i1: i + 1, j0, j1 });
     }
-    // Rows that repeat the same run become one taller solid.
-    const merged = [];
-    for (const r of runs) {
-      const above = merged.find((m) => m.i0 === r.i0 && m.i1 === r.i1 && m.j1 === r.j0);
-      if (above) above.j1 = r.j1;
-      else merged.push({ ...r });
-    }
-    for (const m of merged) {
+    for (const m of [...done, ...open.values()]) {
       const outer = [[m.i0, -DEPTH / 2], [m.i1, -DEPTH / 2], [m.i1, DEPTH / 2], [m.i0, DEPTH / 2]].flatMap(([i, c]) => this.at(a0 + i * CELL, c));
       this.solids.push(this.city.addSolid(outer, base + m.j0 * CELL, base + m.j1 * CELL, 'BRAȘOV'));
     }

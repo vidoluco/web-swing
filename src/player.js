@@ -43,6 +43,7 @@ export class Player {
     this.landTimer = 0;
     this.runPhase = 0;
     this.wallPhase = 0;
+    this.slide = 0; // terrain: how much of her grip the ground takes, 0 to 1
     this.swingTime = 0;
     this.webT = 0;
     this.webFade = 0;
@@ -136,6 +137,7 @@ export class Player {
   // terrain: how much of the run speed is left on this ground, and a slide down rock too steep to stand on.
   // Uphill costs speed, downhill gives a little back.
   slopeRun(h) {
+    this.slide = 0;
     if (!this.city.terrain) return 1;
     const p = this.pos, n = this.city.groundNormalAt(p.x, p.z, _n);
     const hl = Math.hypot(n.x, n.z);
@@ -149,7 +151,7 @@ export class Player {
       f = up > 0 ? Math.max(0.35, 1 - 1.15 * up) : 1 + Math.min(0.22, -up * 0.35);
     }
     // Past about 40 degrees she cannot hold on: the ground carries her down.
-    const steep = clamp((0.766 - n.y) / 0.097, 0, 1);
+    const steep = (this.slide = clamp((0.766 - n.y) / 0.097, 0, 1));
     if (steep > 0) {
       f *= 1 - 0.7 * steep;
       this.vel.x += (n.x / hl) * 14 * steep * h;
@@ -215,7 +217,7 @@ export class Player {
     switch (this.mode) {
       case 'ground': {
         const target = _w.copy(this.wish).multiplyScalar(PHYS.runSpeed * this.slopeRun(h));
-        const k = damp(this.wish.lengthSq() > 0.01 ? 10 : 14, h);
+        const k = damp((this.wish.lengthSq() > 0.01 ? 10 : 14) * (1 - 0.85 * this.slide), h); // terrain: no grip on rock this steep
         v.x += (target.x - v.x) * k;
         v.z += (target.z - v.z) * k;
         v.y -= g * h;
