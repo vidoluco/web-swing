@@ -22,6 +22,7 @@ import { Hud } from './hud.js';
 import { Systems } from './systems.js';
 import { showMapSelect, mapSelectQuery } from './mapselect.js';
 import { Actors } from './actors.js'; // actors:
+import { loadAssets } from './assets.js'; // look-city:
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.has('demo');
@@ -157,6 +158,7 @@ composer.addPass(new EffectPass(camera, new SMAAEffect()));
 // ---------- world ----------
 setLoading('Carico le texture…');
 const textures = loadTextures('textures');
+textures.assets = await loadAssets(''); // look-city: photographic PBR sets and props, never throws
 setLoading(`Ricostruisco ${cfg.label}…`);
 const city = await OsmCity.load(`city/${cityId}`, scene, envMap, textures, (p) => setLoading(`Ricostruisco ${cfg.label}… ${Math.round(p * 100)}%`), cfg.spawnFacing).catch(async (e) => {
   console.error(e);

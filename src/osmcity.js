@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { clamp } from './config.js';
+import { buildBuildingGeometry } from './buildings.js'; // look-city:
+import { buildingMaterial } from './facade.js'; // look-city:
+import { CityLook } from './look.js'; // look-city:
 import { osmBuildingMaterial, surfaceMaterial, markingMaterial, waterMaterial, treeMaterials } from './materials2.js';
 
 // Bucharest rebuilt from OpenStreetMap chunks (see tools/osm-build.mjs).
@@ -131,6 +134,7 @@ export class OsmCity {
     this.base = base;
     this.cityId = base.split('/').pop();
     this.origin = index.origin; // { lat, lon } of the local (0, 0)
+    this.brasov = index.origin.lat > 45; // look-city: baroque palette and pitched roofs
     this.recs = new Map(index.chunks.map((c) => [c.k, { info: c, state: 'idle', prisms: [], waters: [], mm: [], group: null }]));
     this.mmCells = new Map();
     this.roadNodes = new Map();
@@ -145,7 +149,7 @@ export class OsmCity {
     this.waters = [];
     this.stamp = 0;
     this.mats = {
-      building: osmBuildingMaterial(envMap, textures),
+      building: textures.assets ? buildingMaterial(textures.assets) : osmBuildingMaterial(envMap, textures), // look-city:
       ground: surfaceMaterial('ground', textures),
       sidewalk: surfaceMaterial('sidewalk', textures),
       road: surfaceMaterial('road', textures),
@@ -156,6 +160,7 @@ export class OsmCity {
       water: waterMaterial(envMap, textures),
       ...treeMaterials(),
     };
+    this.look = textures.assets ? new CityLook(this, textures.assets) : null; // look-city:
     this.bounds = { minx: Infinity, maxx: -Infinity, minz: Infinity, maxz: -Infinity };
     // Ground: one big plane under everything.
     const g = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000).rotateX(-Math.PI / 2), this.mats.ground);
@@ -190,7 +195,7 @@ export class OsmCity {
       m.receiveShadow = true;
       group.add(m);
     }
-    const rails = this.buildRails(data.rl);
+    const rails = this.look ? this.look.rails(data.rl, group) : this.buildRails(data.rl); // look-city:
     if (rails) group.add(new THREE.Mesh(rails, this.mats.rail));
     const areas = this.buildAreas(data.w, data.g);
     for (const [key, geo] of Object.entries(areas)) {
@@ -355,125 +360,12 @@ export class OsmCity {
   }
 
   buildBuildings(list) {
+    // look-city: geometry, kinds, roofs and the detail records now live in buildings.js
     if (!list.length) return null;
-    const pos = [], nor = [], col = [], u = [], base = [], top = [], sty = [], seed = [], roof = [], tan = [];
-    const props = [];
-    const color = new THREE.Color();
-    const pushV = (x, y, z, nx, ny, nz, uu, b, t, s, sd, rf, tx, tz) => {
-      pos.push(x, y, z);
-      nor.push(nx, ny, nz);
-      col.push(color.r, color.g, color.b);
-      u.push(uu);
-      base.push(b);
-      top.push(t);
-      sty.push(s);
-      seed.push(sd);
-      roof.push(rf);
-      tan.push(tx, tz);
-    };
-    for (const [s, hex, y0, y1, rf, sd, outerArr, holesArr, name] of list) {
-      if (y1 - y0 < 0.5) continue;
-      color.set(hex);
-      const outer = Float32Array.from(outerArr);
-      const holes = holesArr.map((h) => Float32Array.from(h));
-      const rings = [outer, ...holes];
-      // Outer rings wind one way, holes the other; the sign makes every wall normal point outward.
-      const signs = rings.map((r, i) => (i === 0 ? Math.sign(ringArea(r)) || 1 : -(Math.sign(ringArea(r)) || 1)));
-      const prism = { outer, holes, signs, y0, y1, minx: Infinity, maxx: -Infinity, minz: Infinity, maxz: -Infinity, kind: 'building', name, style: s };
-      for (let i = 0; i < outer.length; i += 2) {
-        prism.minx = Math.min(prism.minx, outer[i]);
-        prism.maxx = Math.max(prism.maxx, outer[i]);
-        prism.minz = Math.min(prism.minz, outer[i + 1]);
-        prism.maxz = Math.max(prism.maxz, outer[i + 1]);
-      }
-      this.addPrism(prism);
-      const b = this.bounds;
-      b.minx = Math.min(b.minx, prism.minx); b.maxx = Math.max(b.maxx, prism.maxx);
-      b.minz = Math.min(b.minz, prism.minz); b.maxz = Math.max(b.maxz, prism.maxz);
-      this.mmPut((prism.minx + prism.maxx) / 2, (prism.minz + prism.maxz) / 2, 'b', outer);
-      const parapet = !rf && y1 - y0 > 9 && y0 < 0.5;
-      if (parapet) this.roofProps(prism, props);
-      // Walls.
-      for (let ri = 0; ri < rings.length; ri++) {
-        const r = rings[ri];
-        const sg = signs[ri];
-        const n = r.length / 2;
-        let uacc = 0;
-        for (let i = 0; i < n; i++) {
-          const j = (i + 1) % n;
-          const ax = r[i * 2], az = r[i * 2 + 1], bx = r[j * 2], bz = r[j * 2 + 1];
-          const ex = bx - ax, ez = bz - az;
-          const L = Math.hypot(ex, ez);
-          if (L < 0.05) continue;
-          const nx = (sg * ez) / L, nz = (-sg * ex) / L;
-          const tx = ex / L, tz = ez / L;
-          const u0 = uacc, u1 = uacc + L;
-          uacc = u1;
-          const yt = parapet ? y1 + PARAPET : y1;
-          // Two triangles, wound counter-clockwise when seen from outside.
-          const quad = [[ax, y0, az, u0], [bx, y0, bz, u1], [bx, yt, bz, u1], [ax, y0, az, u0], [bx, yt, bz, u1], [ax, yt, az, u0]];
-          // Check winding against the normal and flip if needed.
-          const c1x = bx - ax, c1y = 0, c1z = bz - az, c2x = 0, c2y = y1 - y0, c2z = 0;
-          const cx = c1y * c2z - c1z * c2y, cz = c1x * c2y - c1y * c2x;
-          const flip = cx * nx + cz * nz < 0;
-          const order = flip ? [0, 2, 1, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
-          for (const k of order) {
-            const q = quad[k];
-            pushV(q[0], q[1], q[2], nx, 0, nz, q[3], y0, y1, s, sd, 0, tx, tz);
-          }
-          if (parapet) {
-            // Inner face and cap of the parapet.
-            const ix0 = ax - nx * 0.3, iz0 = az - nz * 0.3, ix1 = bx - nx * 0.3, iz1 = bz - nz * 0.3;
-            const inner = [[ix1, y1, iz1], [ix0, y1, iz0], [ix0, yt, iz0], [ix1, y1, iz1], [ix0, yt, iz0], [ix1, yt, iz1]];
-            for (const k of order) pushV(inner[k][0], inner[k][1], inner[k][2], -nx, 0, -nz, 0, y0, y1, s, sd, 0, -tx, -tz);
-            const cap = [[ax, yt, az], [ix0, yt, iz0], [ix1, yt, iz1], [ax, yt, az], [ix1, yt, iz1], [bx, yt, bz]];
-            const cy = (cap[2][0] - cap[0][0]) * (cap[1][2] - cap[0][2]) - (cap[1][0] - cap[0][0]) * (cap[2][2] - cap[0][2]);
-            const co = cy > 0 ? [0, 1, 2, 3, 4, 5] : [0, 2, 1, 3, 5, 4];
-            for (const k of co) pushV(cap[k][0], cap[k][1], cap[k][2], 0, 1, 0, 0, y0, y1, s, sd, 0, 1, 0);
-          }
-        }
-      }
-      // Roof: a hipped roof for simple four-sided houses, flat otherwise.
-      if (rf && holes.length === 0 && outer.length === 8) this.hippedRoof(outer, y1, pushV, s, sd, y0);
-      else {
-        const contour = [];
-        for (let i = 0; i < outer.length; i += 2) contour.push(new THREE.Vector2(outer[i], outer[i + 1]));
-        const hv = holes.map((h) => {
-          const a = [];
-          for (let i = 0; i < h.length; i += 2) a.push(new THREE.Vector2(h[i], h[i + 1]));
-          return a;
-        });
-        let tris;
-        try {
-          tris = THREE.ShapeUtils.triangulateShape(contour, hv);
-        } catch {
-          tris = [];
-        }
-        const all = contour.concat(...hv);
-        for (const [a, bb, c] of tris) {
-          const A = all[a], B = all[bb], C = all[c];
-          // Face up: cross((B-A),(C-A)).y must be positive with x,z mapping.
-          const cy = (C.x - A.x) * (B.y - A.y) - (B.x - A.x) * (C.y - A.y);
-          const tri = cy > 0 ? [A, B, C] : [A, C, B];
-          for (const P of tri) pushV(P.x, y1, P.y, 0, 1, 0, 0, y0, y1, s, sd, 0, 1, 0);
-        }
-      }
-    }
-    this._props = props;
-    if (!pos.length) return null;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    g.setAttribute('aU', new THREE.Float32BufferAttribute(u, 1));
-    g.setAttribute('aBase', new THREE.Float32BufferAttribute(base, 1));
-    g.setAttribute('aTop', new THREE.Float32BufferAttribute(top, 1));
-    g.setAttribute('aStyle', new THREE.Float32BufferAttribute(sty, 1));
-    g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
-    g.setAttribute('aRoof', new THREE.Float32BufferAttribute(roof, 1));
-    g.setAttribute('aTan', new THREE.Float32BufferAttribute(tan, 2));
-    g.computeBoundingSphere();
-    return g;
+    const r = buildBuildingGeometry(this, list);
+    this._props = r.props;
+    if (this._rec) this._rec.detail = r.detail;
+    return r.geometry;
   }
 
   // Lift housings and AC units on flat roofs: collidable boxes, not web anchors.
@@ -559,6 +451,7 @@ export class OsmCity {
 
   // Road ribbons (with a wider sidewalk ribbon underneath), footways, rivers, centre-line dashes.
   buildLines(list) {
+    if (this.look) return this.look.buildLines(list); // look-city: roads, pavements, paths, rivers
     const out = { sidewalk: [], road: [], plaza: [], river: [], marking: [] };
     for (const r of list) {
       const pts = r.pts;
@@ -711,6 +604,7 @@ export class OsmCity {
   }
 
   buildTrees(t) {
+    if (this.look) return this.look.trees(t); // look-city:
     const n = t.length / 2;
     const trunk = new THREE.InstancedMesh(this.mats.trunkGeo, this.mats.trunk, n);
     const crown = new THREE.InstancedMesh(this.mats.crownGeo, this.mats.crown, n);
@@ -773,6 +667,7 @@ export class OsmCity {
     const at = this.focus || camPos;
     this.mats.ground.userData.city?.uCamXZ.value.set(at.x, at.z);
     this.mats.water.userData.time && (this.mats.water.userData.time.value = time);
+    this.look?.update(dt, time, camPos); // look-city:
     // Build at most one fetched chunk per frame to keep frames smooth.
     const ready = this.building.findIndex((r) => r.state === 'fetched');
     if (ready >= 0) this.buildChunk(this.building.splice(ready, 1)[0]);
