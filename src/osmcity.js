@@ -67,7 +67,8 @@ export function closestOnPrism(x, z, b, out) {
 }
 
 export class OsmCity {
-  static async load(base, scene, envMap, textures, onProgress) {
+  // base is the city folder, public/city/<id>; spawnFacing is the point the start roof looks at.
+  static async load(base, scene, envMap, textures, onProgress, spawnFacing) {
     const index = await fetch(`${base}/index.json`).then((r) => r.json());
     const city = new OsmCity(scene, envMap, textures, index, base);
     const lod = await fetch(`${base}/lod.bin`).then((r) => (r.ok ? r.arrayBuffer() : null));
@@ -84,9 +85,9 @@ export class OsmCity {
       u.uCityBox.value.set(index.map.x0, index.map.z0, index.map.x1, index.map.z1);
       u.uHasCity.value = 1;
     }
-    // The first ring around Piata Unirii is loaded up front so the start tower exists.
+    // The first ring around the origin is loaded up front so the start tower exists.
     await city.streamAround(0, 0, 1100, onProgress);
-    city.finish();
+    city.finish(spawnFacing);
     return city;
   }
 
@@ -128,6 +129,8 @@ export class OsmCity {
 
   constructor(scene, envMap, textures, index, base) {
     this.base = base;
+    this.cityId = base.split('/').pop();
+    this.origin = index.origin; // { lat, lon } of the local (0, 0)
     this.recs = new Map(index.chunks.map((c) => [c.k, { info: c, state: 'idle', prisms: [], waters: [], mm: [], group: null }]));
     this.mmCells = new Map();
     this.roadNodes = new Map();
@@ -730,9 +733,10 @@ export class OsmCity {
     return [trunk, crown];
   }
 
-  finish() {
-    // Spawn: the tallest block within 900 m of Piata Unirii, on its west edge facing the Palace of Parliament.
-    const r = this.roofNear(0, 0, 900, -1218, -68);
+  finish(facing) {
+    // Spawn: the tallest block within 900 m of the origin, on its edge facing the point of interest.
+    const [fx, fz] = facing || [];
+    const r = this.roofNear(0, 0, 900, fx, fz);
     this.spawnBox = r.box;
     this.spawn = r.pos;
     this.spawnYaw = r.yaw;
@@ -806,6 +810,11 @@ export class OsmCity {
       }
     }
     return out;
+  }
+
+  // Terrain height in metres relative to the origin. Flat for now; the cities with relief will fill it in.
+  groundAt(x, z) {
+    return 0;
   }
 
   isWater(x, z) {

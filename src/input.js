@@ -1,4 +1,5 @@
 // Keyboard + mouse with pointer lock. Edge-triggered presses are cleared every frame.
+// The combat and interaction keys (J or left click, Q, C, G, P) only report; the systems decide what they do.
 export class Input {
   constructor(el) {
     this.el = el;
@@ -66,6 +67,11 @@ export class Input {
       resetPressed: this.pressed.has('KeyR'),
       mapPressed: this.pressed.has('KeyM'),
       carPressed: this.pressed.has('KeyF'),
+      attackPressed: this.mousePressed || this.pressed.has('KeyJ'),
+      throwPressed: this.pressed.has('KeyQ'),
+      tiePressed: this.pressed.has('KeyC'),
+      interactPressed: this.pressed.has('KeyG'),
+      pausePressed: this.pressed.has('KeyP'),
       spot: [...this.pressed].map((c) => (/^Digit\d$/.test(c) ? (+c[5] + 9) % 10 : -1)).find((v) => v >= 0),
     };
   }
