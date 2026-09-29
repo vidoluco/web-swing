@@ -124,42 +124,40 @@ try {
     );
   }
 
-  // 3. A building in the way: the actor goes round it and never inside.
+  // 3. A building in the way: eight blocks across the city, each between the actor and its goal.
+  // Every one is walked round without a step inside it; most are reached (a few sit in courtyards
+  // the planner's window cannot get out of).
   r = await page.evaluate(() => {
     const g = window.__game, A = g.actors, T = window.__t;
-    // A small isolated block: nothing else within 25 m of its outline, open ground on both sides.
-    let pick = null;
+    const picks = [];
     for (const b of g.city.prisms) {
       if (b.kind === 'prop' || b.y0 > 0.5 || b.holes.length) continue;
       const w = b.maxx - b.minx, d = b.maxz - b.minz;
-      if (w < 8 || w > 30 || d < 8 || d > 30) continue;
-      if (Math.hypot((b.minx + b.maxx) / 2, (b.minz + b.maxz) / 2) > 900) continue;
+      if (w < 8 || w > 60 || d < 8 || d > 60 || Math.hypot((b.minx + b.maxx) / 2, (b.minz + b.maxz) / 2) > 900) continue;
       const cx = (b.minx + b.maxx) / 2, cz = (b.minz + b.maxz) / 2;
-      const ax = b.minx - 8, bx = b.maxx + 8;
-      if (A.blocked(ax, cz, 0.6) || A.blocked(bx, cz, 0.6)) continue;
-      // The corridor round the block has to be free: 6 m out from each corner.
-      if ([[b.minx - 6, b.minz - 6], [b.maxx + 6, b.minz - 6], [b.minx - 6, b.maxz + 6], [b.maxx + 6, b.maxz + 6]].some(([x, z]) => A.blocked(x, z, 0.6))) continue;
-      if (!g.pointIn(cx, cz, b)) continue;
-      pick = { b, cx, cz, ax, bx };
-      break;
+      if (A.blocked(b.minx - 8, cz, 0.6) || A.blocked(b.maxx + 8, cz, 0.6) || !g.pointIn(cx, cz, b)) continue;
+      picks.push({ b, cx, cz, ax: b.minx - 8, bx: b.maxx + 8 });
     }
-    if (!pick) return { skipped: 'no isolated block' };
-    T.stand(pick.ax, pick.cz - 6);
-    T.tick(3);
-    const a = A.spawn('civilian', { x: pick.ax, z: pick.cz }, { exact: true, yaw: Math.PI / 2 });
-    A.walkTo(a, pick.bx, pick.cz, 1.6);
-    let inside = 0, t = 0, maxDetour = 0;
-    while (t < 90 && a.hasGoal) {
-      T.tick(1);
-      t += 1 / 30;
-      if (T.inside(a) > 0) inside++;
-      maxDetour = Math.max(maxDetour, Math.abs(a.pos.z - pick.cz));
+    picks.sort((p, q) => p.cx - q.cx || p.cz - q.cz);
+    const out = [];
+    for (const pick of picks.filter((_, i) => i % 15 === 0).slice(0, 8)) {
+      T.stand(pick.ax, pick.cz - 6);
+      T.tick(3);
+      const a = A.spawn('civilian', { x: pick.ax, z: pick.cz }, { exact: true, yaw: Math.PI / 2 });
+      A.walkTo(a, pick.bx, pick.cz, 1.6);
+      let inside = 0, t = 0, detour = 0;
+      while (t < 120 && a.hasGoal) {
+        T.tick(1);
+        t += 1 / 30;
+        if (T.inside(a) > 0) inside++;
+        detour = Math.max(detour, Math.abs(a.pos.z - pick.cz));
+      }
+      out.push({ size: [Math.round(pick.b.maxx - pick.b.minx), Math.round(pick.b.maxz - pick.b.minz)], seconds: +t.toFixed(0), left: +Math.hypot(a.pos.x - pick.bx, a.pos.z - pick.cz).toFixed(1), inside, detour: +detour.toFixed(0) });
+      a.remove();
     }
-    const res = { seconds: +t.toFixed(1), left: +Math.hypot(a.pos.x - pick.bx, a.pos.z - pick.cz).toFixed(2), inside, detour: +maxDetour.toFixed(1), block: [+(pick.b.maxx - pick.b.minx).toFixed(0), +(pick.b.maxz - pick.b.minz).toFixed(0)] };
-    a.remove();
-    return res;
+    return { blocks: out, reached: out.filter((o) => o.left < 1.5).length, inside: out.reduce((n, o) => n + o.inside, 0) };
   });
-  check('a block between the actor and its goal is walked round, never entered', r.skipped || (r.inside === 0 && r.detour > 3), r);
+  check('blocks in the way are walked round, never entered', r.blocks.length === 8 && r.inside === 0 && r.reached >= 6, r);
 
   // 4. The state machine: stun, tie, hit until down, then gone.
   r = await page.evaluate(() => {
@@ -299,43 +297,99 @@ try {
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'shots/actors-crowd.png' });
 
-  // 7. The cost of 120 actors around the player, per game tick (no rendering).
+  // 7. The cost of 120 actors around the player: per game tick (no rendering), then per rendered
+  // frame. The baseline is the same scene with the actors switched off, three rounds each, median.
   r = await page.evaluate(() => {
     const g = window.__game, A = g.actors, T = window.__t;
     const s = T.streets(0, 0, 900).find((x) => x.tight > 8) || T.streets(0, 0, 900)[0];
     T.stand((s.ax + s.bx) / 2, (s.az + s.bz) / 2);
     A.clear();
     T.tick(30);
-    const time = (label, n) => {
-      const t0 = performance.now();
-      g.simulate(n / 60, 1 / 60);
-      return +((performance.now() - t0) / n).toFixed(3);
-    };
-    const base = time('base', 240);
-    // 120 actors: a third within 60 m, the rest out to 160 m, of every kind, all on the move.
+    // 120 actors: a third within 50 m, the rest out to 150 m, of every kind, all on the move.
     const c = g.player.pos;
     const mix = ['civilian', 'civilian', 'civilian', 'civilian', 'civilian', 'thug', 'cop', 'dog', 'civilian', 'bear'];
     let n = 0;
     for (let i = 0; i < 400 && n < 120; i++) {
-      const d = i % 3 === 0 ? 50 : 150;
-      const p = A.randomWalkPoint(c, d);
+      const p = A.randomWalkPoint(c, i % 3 === 0 ? 50 : 150);
       if (Math.hypot(p.x - c.x, p.z - c.z) < 6) continue;
       if (A.spawn(mix[n % mix.length], p)) n++;
     }
-    T.crowd();
-    const stats = A.stats();
-    // Update alone, to see what the actors cost inside the tick.
-    const u0 = performance.now();
-    for (let i = 0; i < 240; i++) {
-      if (i % 30 === 0) T.crowd();
-      A.update(1 / 60, g.player);
+    for (let i = 0; i < 6; i++) {
+      T.crowd();
+      T.tick(30);
     }
-    const updateOnly = +((performance.now() - u0) / 240).toFixed(3);
-    const withActors = time('with', 240);
-    return { actors: n, stats, tickWithoutActors: base, tickWithActors: withActors, actorsShare: +(withActors - base).toFixed(3), actorUpdateOnly: updateOnly };
+    const stats = A.stats();
+    const med = (a) => a.sort((x, y) => x - y)[a.length >> 1];
+    const noop = () => {};
+    const off = (on) => {
+      if (on) delete A.update;
+      else A.update = noop;
+      for (const a of A.list) a.mesh.visible = on;
+    };
+    const tick = () => {
+      T.crowd();
+      const t0 = performance.now();
+      g.simulate(4, 1 / 60);
+      return (performance.now() - t0) / 240;
+    };
+    const frame = () => {
+      T.crowd();
+      const t0 = performance.now();
+      for (let i = 0; i < 30; i++) g.advance(1 / 60, 1 / 60);
+      return (performance.now() - t0) / 30;
+    };
+    const res = { tick: { on: [], off: [] }, frame: { on: [], off: [] } };
+    for (let round = 0; round < 3; round++) {
+      for (const on of [false, true]) {
+        off(on);
+        res.tick[on ? 'on' : 'off'].push(tick());
+        res.frame[on ? 'on' : 'off'].push(frame());
+      }
+    }
+    off(true);
+    const f = (v) => +med(v).toFixed(2);
+    const out = { actors: n, stats, tickMsWithout: f(res.tick.off), tickMsWith: f(res.tick.on), frameMsWithout: f(res.frame.off), frameMsWith: f(res.frame.on) };
+    out.tickMsActors = +(out.tickMsWith - out.tickMsWithout).toFixed(2);
+    out.frameMsActors = +(out.frameMsWith - out.frameMsWithout).toFixed(2);
+    return out;
   });
-  console.log('COST', JSON.stringify(r));
-  check('120 actors: cost per game tick reported, actors add under 3 ms', r.actors === 120 && r.tickWithActors - r.tickWithoutActors < 3, r);
+  console.log('COST per game tick (no render) and per rendered frame (tick + draw submit, GPU shared), ms:', JSON.stringify(r));
+  check('120 actors: cost reported, the actors add under 3 ms to a game tick', r.actors === 120 && r.tickMsActors < 3, r);
+
+  // 8. Water: a lake between the actor and its goal is never entered.
+  r = await page.evaluate(() => {
+    const g = window.__game, A = g.actors, T = window.__t;
+    A.clear();
+    let best = null;
+    for (const w of g.city.waters) {
+      // Ponds and small lakes: the way round has to fit in the planner's window.
+      if (w.maxx - w.minx < 30 || w.maxx - w.minx > 160 || w.maxz - w.minz > 160) continue;
+      for (let z = w.minz + 20; z < w.maxz - 20; z += 10) {
+        let run = 0, start = 0, top = { len: 0 };
+        for (let x = w.minx - 10; x < w.maxx + 10; x++) {
+          if (g.city.isWater(x, z)) (run || (start = x)), run++;
+          else {
+            if (run > top.len) top = { len: run, x0: start, x1: x };
+            run = 0;
+          }
+        }
+        if (top.len > 25 && top.len < 100 && !A.blocked(top.x0 - 5, z, 0.6) && !A.blocked(top.x1 + 5, z, 0.6) && (!best || top.len > best.len)) best = { ...top, z };
+      }
+    }
+    if (!best) return { skipped: 'no pond found', waters: g.city.waters.length };
+    T.stand(best.x0 - 5, best.z);
+    g.simulate(0.5, 1 / 30);
+    const a = A.spawn('civilian', { x: best.x0 - 5, z: best.z }, { exact: true, yaw: Math.PI / 2 });
+    A.walkTo(a, best.x1 + 5, best.z, 1.6);
+    let water = 0, t = 0, start = Math.hypot(a.pos.x - (best.x1 + 5), a.pos.z - best.z);
+    while (t < 150 && a.hasGoal) {
+      g.simulate(1 / 30, 1 / 30);
+      t += 1 / 30;
+      if (g.city.isWater(a.pos.x, a.pos.z)) water++;
+    }
+    return { pond: Math.round(best.len), seconds: +t.toFixed(1), water, startDistance: Math.round(start), left: +Math.hypot(a.pos.x - (best.x1 + 5), a.pos.z - best.z).toFixed(1), state: a.state };
+  });
+  check('a pond between the actor and its goal is walked round, never entered', r.water === 0 && r.left < 1.5, r);
 
   const errs = errors.filter((e) => !/GPU stall|GL Driver/.test(e));
   check('no page errors', errs.length === 0, errs);

@@ -893,7 +893,7 @@ export class Actors {
     const i = this.list.indexOf(a);
     if (i >= 0) this.list.splice(i, 1);
     if (a.rope) {
-      a.rig.tilt.remove(a.rope);
+      a.rope.parent.remove(a.rope);
       a.rope = null;
     }
     if (a.ghost) this._freeGhost(a);
@@ -971,10 +971,11 @@ export class Actors {
       if (a.K.rig === 'human') {
         for (const y of [1.1, 1.24, 1.38]) ring(0, y, 0.01, 0.19, 0.155, 0.17).rotation.x = Math.PI / 2;
       } else {
+        // Round the barrel, hung on the body bone so it goes down with the animal when it lies.
         const q = a.rig.model, b = q.S.body[0];
-        ring(0, b[1] * q.k, b[2] + b[5] * 0.25, b[3] * q.k * 1.1, b[4] * q.k * 1.1, b[3] * q.k * 0.5);
+        ring(0, b[1] * q.k - q.S.fore.y * q.k, (b[2] + b[5] * 0.25) * q.k, b[3] * q.k * 1.1, b[4] * q.k * 1.1, b[3] * q.k * 0.5);
       }
-      a.rig.tilt.add(rope);
+      (a.K.rig === 'human' ? a.rig.tilt : a.rig.bones[Q.body]).add(rope);
       a.rope = rope;
     }
     this.bus('actor:tied', { actor: a });
