@@ -294,6 +294,16 @@ export function create(game) {
     },
     styles: STYLES,
     maps: envMaps,
+    sky,
+    lamps: {
+      // Street lamps found near the camera, and how many the picture is using right now (0 by day).
+      get found() {
+        return lamps?.count ?? 0;
+      },
+      get lit() {
+        return grade.uniforms.get('uLampN').value;
+      },
+    },
     specularRepaired,
     setTime(h) {
       hours = wrapHours(h);
