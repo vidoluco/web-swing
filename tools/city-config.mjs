@@ -8,6 +8,7 @@
 // built; osmium wants the same box as west,south,east,north).
 // landmarks: which named buildings go to index.json "landmarks" (b = { h, t: tags }).
 // places: extra named things (any OSM element, by id) that go to "landmarks" with their ground height.
+// elevations: [place key, metres above sea level in OSM (ele tag or a survey), tolerance] for check-city.mjs.
 export const CITIES = {
   bucharest: {
     origin: '44.4268,26.1025', // Piata Unirii
@@ -33,6 +34,7 @@ export const CITIES = {
       { key: 'telecabina-brasov-jos', name: 'Telecabina Tâmpa (stația de jos)', ref: 'w243966776' },
       { key: 'scritta-brasov', name: 'Scritta BRAȘOV', ref: 'n11151033893' },
     ],
+    elevations: [['tampa-summit', 960, 25], ['tampa-telecabina-sus', 960, 25], ['telecabina-brasov-jos', 640, 25], ['poiana-brasov', 1030, 25]],
   },
 };
 CITIES.center = CITIES.bucharest;
@@ -48,7 +50,7 @@ export function cityParams(name) {
   const [lat, lon] = origin.split(',').map(Number);
   const box = bbox.split(',').map(Number);
   if ([lat, lon, ...box].some((v) => !Number.isFinite(v)) || box.length !== 4) throw new Error(`Bad ORIGIN or BBOX: ${origin} | ${bbox}`);
-  return { name, origin: { lat, lon }, bbox: box, landmarks: c.landmarks, places: c.places };
+  return { name, origin: { lat, lon }, bbox: box, landmarks: c.landmarks, places: c.places, elevations: c.elevations };
 }
 
 // Metres per degree at the origin. Longitude is scaled by the latitude of the origin.

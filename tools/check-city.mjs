@@ -1,7 +1,9 @@
 // Loads a built city folder with node only and checks it. Usage: node tools/check-city.mjs <city or folder>
 // Prints counts, heights and terrain checks; exits 1 when a hard check fails.
 import { readFileSync, existsSync, statSync } from 'node:fs';
+import { basename } from 'node:path';
 import { loadDem } from './dem-lib.mjs';
+import { CITIES } from './city-config.mjs';
 
 const arg = process.argv[2];
 if (!arg) throw new Error('usage: node tools/check-city.mjs <city or folder>');
@@ -14,13 +16,13 @@ const dem = index.dem ? loadDem(dir, index.dem) : null;
 // ---------- chunks ----------
 const N = { buildings: 0, trees: 0, pois: 0, water: 0, rails: 0, tram: 0 };
 const roads = {}, greens = {};
-let y0min = Infinity, y1max = -Infinity, hmin = Infinity, hmax = -Infinity, nan = 0, lodExpect = 0;
+let y0min = Infinity, y1max = -Infinity, nan = 0, inverted = 0, lodExpect = 0;
 const roadPts = [];
 const buildings = [];
 for (const c of index.chunks) {
   const f = `${dir}/${c.k}.json`;
   if (!existsSync(f)) { fail(`missing chunk ${c.k}`); continue; }
-  const d = JSON.parse(readFileSync(f, 'utf8'));
+  const d = { r: [], w: [], g: [], t: [], rl: [], p: [], ...JSON.parse(readFileSync(f, 'utf8')) };
   if (d.b.length !== c.nb) fail(`chunk ${c.k}: index says ${c.nb} buildings, file has ${d.b.length}`);
   lodExpect += c.nb;
   N.buildings += d.b.length;
@@ -37,7 +39,8 @@ for (const c of index.chunks) {
   for (const g of d.g) greens[g[0]] = (greens[g[0]] || 0) + 1;
   for (const b of d.b) {
     const [, , y0, y1, , , outer, holes] = b;
-    if (![y0, y1].every(Number.isFinite) || !(y1 > y0)) { nan++; continue; }
+    if (![y0, y1].every(Number.isFinite)) { nan++; continue; }
+    if (!(y1 > y0)) inverted++; // a min_height at or above the height in the OSM tags
     y0min = Math.min(y0min, y0);
     y1max = Math.max(y1max, y1);
     buildings.push({ y0, y1, outer, holes });
@@ -48,8 +51,9 @@ console.log(`${dir}: ${index.chunks.length} chunks, origin ${index.origin.lat}, 
 console.log(`buildings ${N.buildings}, trees ${N.trees}, drinking places ${N.pois}, water polygons ${N.water}, rails ${N.rails} (tram ${N.tram})`);
 console.log(`roads: ${sum(roads)}`);
 console.log(`greens: ${sum(greens)}`);
-console.log(`buildings y0 min ${y0min}, y1 max ${y1max}, invalid ${nan}`);
-if (nan) fail(`${nan} buildings with a non finite or inverted y0/y1`);
+console.log(`buildings y0 min ${y0min}, y1 max ${y1max}, non finite ${nan}, y1 not above y0 ${inverted}`);
+if (nan) fail(`${nan} buildings with a non finite y0/y1`);
+if (dem && inverted) fail(`${inverted} buildings with y1 not above y0`);
 if (existsSync(`${dir}/lod.bin`)) {
   const bytes = statSync(`${dir}/lod.bin`).size;
   if (bytes !== lodExpect * 44) fail(`lod.bin is ${bytes} bytes, ${lodExpect} boxes need ${lodExpect * 44}`);
@@ -68,8 +72,17 @@ if (!dem) {
   if (Math.abs(mn - meta.min) > 0.01 || Math.abs(mx - meta.max) > 0.01) fail('dem min/max in index.json do not match dem.bin');
   const [bx0, bz0, bx1, bz1] = index.map ? [index.map.x0, index.map.z0, index.map.x1, index.map.z1] : [meta.x0, meta.z0, meta.x0 + (meta.w - 1) * meta.step, meta.z0 + (meta.h - 1) * meta.step];
   if (bx0 < meta.x0 || bz0 < meta.z0 || bx1 > meta.x0 + (meta.w - 1) * meta.step || bz1 > meta.z0 + (meta.h - 1) * meta.step) fail('the dem does not cover the city box');
-  console.log(`origin height ${groundAt(0, 0).toFixed(2)} (must be 0)`);
+  const at = (v) => { const k = data.indexOf(v); return `(${meta.x0 + (k % meta.w) * meta.step}, ${meta.z0 + Math.floor(k / meta.w) * meta.step})`; };
+  console.log(`lowest point ${at(mn)}, highest point ${at(mx)}; origin height ${groundAt(0, 0).toFixed(2)} (must be 0)`);
   if (Math.abs(groundAt(0, 0)) > 0.05) fail('ground at the origin is not 0');
+  // Places with a surveyed elevation in OSM must sit at that height above sea level, within the tolerance.
+  for (const [key, ele, tol] of CITIES[basename(dir)]?.elevations || []) {
+    const l = index.landmarks.find((l) => l.key === key);
+    if (!l) { fail(`place ${key} missing from index.json`); continue; }
+    const got = l.y + meta.base;
+    console.log(`  ${key}: dem ${got.toFixed(0)} m above sea level, OSM ${ele} (tolerance ${tol})`);
+    if (Math.abs(got - ele) > tol) fail(`${key} is at ${got.toFixed(0)} m, OSM says ${ele}`);
+  }
 
   // Every building must stand on the terrain: y0 is the lowest ground under the footprint.
   // The reference is independent of the builder: vertices, edges every 1 m and a 1 m lattice inside.
@@ -128,7 +141,7 @@ if (!dem) {
 }
 
 // ---------- landmarks ----------
-const named = index.landmarks.filter((l) => l.key);
+const named = (index.landmarks || []).filter((l) => l.key);
 if (named.length) {
   console.log('places:');
   for (const l of named) console.log(`  ${l.key.padEnd(24)} x ${String(l.x).padStart(8)}  z ${String(l.z).padStart(8)}  ground ${l.y !== undefined ? l.y : '-'}`);
