@@ -7,7 +7,7 @@
 //
 // pace: the average speed in metres per second that earns gold, silver and bronze. The times are
 // worked out from the length of the gates' path: gold = length / pace + 6 s, silver + 8 s, bronze + 10 s.
-// Flat Bucharest boulevards take a good swinger about 26 m/s, the old town of Brasov is tighter and
+// Flat Bucharest boulevards take a good swinger about 22 m/s (a plain autopilot that swings toward the next gate manages 22 on the Unirii boulevard and 14 in the streets of Calea Victoriei), the old town of Brasov is tighter and
 // the two climbs go on foot and by wall.
 
 const p = (x, z) => ({ x, z });
@@ -19,7 +19,7 @@ export const RACES = {
       title: 'Bulevardul Unirii',
       from: 'Piața Unirii',
       to: 'Palatul Parlamentului',
-      pace: [26, 19, 13],
+      pace: [22, 16, 11],
       points: [p(24.2, -14), p(-336.7, -8.3), p(-673.3, -16.7), p(-1010, -25)],
     },
     {
@@ -27,7 +27,7 @@ export const RACES = {
       title: 'Calea Victoriei',
       from: 'Ateneul Român',
       to: 'Piața Victoriei',
-      pace: [26, 19, 13],
+      pace: [22, 16, 11],
       points: [p(-440, -1606), p(-612.2, -1851.4), p(-806.1, -2095.8), p(-994.6, -2338.7), p(-1185.3, -2589.6), p(-1381, -2833)],
     },
     {
@@ -35,7 +35,7 @@ export const RACES = {
       title: 'Șoseaua Kiseleff',
       from: 'Piața Victoriei',
       to: 'Arcul de Triumf',
-      pace: [26, 19, 13],
+      pace: [22, 16, 11],
       points: [p(-1381, -2833), p(-1483.7, -3164.6), p(-1603.8, -3486.2), p(-1715.2, -3812.8), p(-1826.6, -4139.4), p(-1938, -4466)],
     },
     {
@@ -43,7 +43,7 @@ export const RACES = {
       title: 'Giro di Herăstrău',
       from: 'Arcul de Triumf',
       to: 'Sky Tower',
-      pace: [26, 19, 13],
+      pace: [22, 16, 11],
       points: [p(-1938, -4466), p(-1640.7, -4697.9), p(-1345.3, -4933.3), p(-1049, -5167), p(-742.5, -5289.7), p(-400, -5474.9), p(-129.5, -5535.2), p(157.7, -5652.8)],
     },
     {
@@ -51,7 +51,7 @@ export const RACES = {
       title: 'Dalla stazione',
       from: 'Gara de Nord',
       to: 'Ateneul Român',
-      pace: [26, 19, 13],
+      pace: [22, 16, 11],
       points: [p(-2164, -2128), p(-1872.8, -2042.4), p(-1582.7, -1956.7), p(-1292, -1869), p(-1019.3, -1750.2), p(-710.7, -1709.7), p(-440, -1606)],
     },
   ],
