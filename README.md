@@ -6,7 +6,7 @@ A web-swinging game in the browser over the real Bucharest, rebuilt from the OHM
 |---|---|
 | Play | `npm run play` (builds, serves on http://127.0.0.1:5178/ and opens the browser) |
 | Demo (autopilot) | http://127.0.0.1:5178/?demo |
-| Tests | `node test/physics.mjs`: 12 scripted checks in headless Chromium, exit code 1 on failure |
+| Tests | `node test/physics.mjs`: 12 scripted checks in headless Chromium, exit code 1 on failure. `node test/core.mjs`: the foundation (systems, events, save, hud, map selection). `PORT=n` picks the test server port |
 | Videos | `node test/showcase.mjs` → `shots/showcase.mp4`; `node test/record.mjs 30` → `shots/preview.mp4` |
 | Frame rate | `node test/perf.mjs demo 30` (real-time, on the GPU) |
 
@@ -36,7 +36,22 @@ Walk over the drinks in front of bars and kiosks (yellow dots on the minimap): a
 | Movement | pendulum on an inelastic rope, anchors on building faces, wall crawl and vault, zip, water respawn |
 | Rendering | CSM shadows, N8AO, ACES tone mapping, SMAA, interior-mapped windows, PBR ground, double vision when drunk |
 
-URL flags: `?lowq` for weaker GPUs, `?fps` for the frame rate, `?cars=N` for traffic density, `?spot=0..9` to start at a place, `?city=center` for the smaller centre-only build.
+URL flags: `?lowq` for weaker GPUs, `?fps` for the frame rate, `?cars=N` for traffic density, `?spot=0..9` to start at a place, `?seed=N` for the random generator, `?city=<id>` to skip the map selection (`bucharest`, `brasov`, or `center` for the smaller centre-only build of Bucharest). `?demo` and `?shot=` open Bucharest without the selection.
+
+## Architecture
+
+| Piece | How |
+|---|---|
+| Map selection | a plain start shows a card per city (București, Brașov), each with a picture from the game (`public/ui/`, retaken with `node test/citycards.mjs <id>`). A card is a link to `?city=<id>`, so nothing is built before the choice; the last choice is saved. The pause screen has Cambia mappa |
+| Cities | `?city=<id>` loads `public/city/<id>/` and `CITIES[id]` from `src/cities.js`: `label`, `tagline`, `image`, `cardView`, `spots` (number keys), `waypoints` (demo route), `spawnFacing`. Coordinates are x east, y up, z south, in metres from the origin in `index.json`. `city.cityId`, `city.origin` and `city.groundAt(x, z)` (0 on flat cities) are the per-city hooks |
+| Systems | a system is `src/<name>.js` exporting `create(game)`, which returns `{ name, init?(), update(dt), onCityChange?(id), dispose?() }`. `src/systems-list.js` lists them one line each, `() => import('./name.js'),`, in update order. Once every system exists `init` runs, then `onCityChange` with the city, then `update` on each tick after the player, traffic and drinks and before drawing. One that throws is logged once and skipped. `game.systems.add(system)` and `remove(name)` do the same by hand, for tests |
+| game | `scene camera renderer params cityId city player hero traffic drinks drunk voice input events actors hud save minimap sfx time rng systems`, also `window.__game` next to the test hooks (`advance`, `simulate`, `state`, `setInput`, `goTo`, ...). `time` is game seconds, `rng` is seeded (`?seed=N`), `actors` stays null until `src/actors.js` lands |
+| Events | `game.events.on(name, fn)` returns the function that unsubscribes, `emit(name, payload)`. The core emits `car:stolen` and `city:change`; the systems emit the rest |
+| Input | `game.input.state` adds `attackPressed` (left click or J), `throwPressed` (Q), `tiePressed` (C), `interactPressed` (G) and `pausePressed` (P) to the old fields. They only report, the systems decide what they mean |
+| HUD | DOM over the canvas, text 13 px or more, nothing overlapping down to phone width. `hud.add(id, { order, render(el, game) })` or an element adds a panel (render runs about ten times a second), `hud.toast(text)`, `hud.setObjective(text or null)`. `minimap.setMarkers(owner, [{ x, z, color, shape: 'dot' or 'ring' or 'square', label? }])` replaces that owner's markers |
+| Save | `game.save.get(key, fallback)` and `set(key, value)`, JSON under `webswing.v1` in localStorage, in memory when storage is blocked |
+
+Event names and payloads: `hit {target, dmg, by}`, `actor:down {actor}`, `actor:tied {actor}`, `crime:start {id, kind, pos}`, `crime:end {id, result}`, `wanted {stars}`, `busted`, `respect {amount, why}`, `mission:start {id}`, `mission:end {id, result}`, `car:stolen {car}`, `player:down`, `city:change {id}`.
 
 ## Rebuilding the city
 

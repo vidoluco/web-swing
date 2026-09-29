@@ -25,7 +25,8 @@
   .btn:hover, .btn:focus-visible { filter: brightness(1.15); outline: none; }
   #overlay-buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
   #loading .btn { margin-top: 18px; letter-spacing: 0.06em; text-transform: none; }
-  .keys { display: grid; grid-template-columns: auto auto; gap: 6px 18px; font-size: 14px; opacity: 0.9; text-align: left; }
+  .keys { display: grid; grid-template-columns: auto auto; gap: 6px 18px; max-width: min(760px, 100%); font-size: 14px; opacity: 0.9; text-align: left; }
+  #keys-spots { grid-column: 1 / -1; }
   .keys div:empty { display: none; }
   .keys b { display: inline-block; min-width: 26px; padding: 2px 8px; border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; font-weight: 700; text-align: center; margin-right: 4px; }
 
@@ -54,12 +55,13 @@
   #objective { background: rgba(0,0,0,0.5); border-left: 4px solid #ffd400; }
   #toast { background: rgba(0,0,0,0.78); letter-spacing: 0.08em; opacity: 0; transition: opacity 0.25s; }
   #toast.show { opacity: 1; }
+  #hud-line:has(#toast.show) #objective { visibility: hidden; }
   #hud-panels { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
   .hud-item { background: rgba(0,0,0,0.5); border-radius: 8px; padding: 6px 10px; font-weight: 800; font-size: 15px; text-shadow: 0 1px 3px #000; }
   .hud-item:empty { display: none; }
 
-  /* Bottom centre: subtitle above the hint, kept clear of the speed line and of the map. */
-  #hud-bottom { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(760px, calc(100vw - 720px)); display: flex; flex-direction: column-reverse; align-items: center; gap: 8px; pointer-events: none; }
+  /* Bottom centre: subtitle above the hint, above the speed line and clear of the map (centred, so as narrow as the map's side). */
+  #hud-bottom { position: fixed; left: 50%; bottom: 60px; transform: translateX(-50%); width: min(760px, calc(100vw - 2 * (var(--map-w) + 32px))); display: flex; flex-direction: column-reverse; align-items: center; gap: 8px; pointer-events: none; }
   #say, #hint { display: none; box-sizing: border-box; max-width: 100%; text-align: center; background: rgba(0,0,0,0.6); }
   #say.show, #hint.show { display: block; animation: fadein 0.25s; }
   @keyframes fadein { from { opacity: 0; } }
@@ -70,7 +72,7 @@
   #overlay .credit { font-size: 13px; opacity: 0.7; }
   #osm { position: fixed; right: 18px; bottom: 4px; font-size: 13px; opacity: 0.75; text-shadow: 0 1px 2px #000; pointer-events: none; }
   @media (max-height: 520px) { .big-title { font-size: 40px; } }
-  @media (max-width: 900px) { #hud-bottom { width: calc(100vw - 32px); bottom: 216px; } }
+  @media (max-width: 700px) { #hud-bottom { width: calc(100vw - 32px); bottom: 216px; } }
   @media (max-width: 600px) { :root { --map-w: 130px; } #minimap { height: 100px; } #hud-bottom { bottom: 162px; } .keys { font-size: 13px; } }
 </style>
 </head>
