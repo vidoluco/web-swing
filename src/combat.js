@@ -117,6 +117,8 @@ class Combat {
     const g = this.g;
     this.fx = new Fx(g.scene, g.sfx);
     this.thugs = new Thugs(g, this.fx);
+    // A puff of dust where a thug goes down.
+    this.off = g.events.on('actor:down', ({ actor }) => actor.kind === 'thug' && this.fx.puff(actor.pos.x, actor.pos.y + 0.3, actor.pos.z, 6));
     this.handPapuc = papucMesh();
     this.handPapuc.scale.setScalar(1.15);
     this.handPapuc.visible = false;
@@ -200,6 +202,7 @@ class Combat {
     this.throwCool -= dt;
     if (!Number.isFinite(h.hp)) h.hp = h.max;
     h.hp = clamp(h.hp, 0, h.max);
+    if (!g.actors) return;
     this.thugs.update(dt, this);
     this.fx.update(dt);
     this.stepKicks(dt);
@@ -646,17 +649,19 @@ class Combat {
   tryTie() {
     const g = this.g, P = g.player;
     if (this.tieJob) return;
-    const near = g.actors.near(P.pos, TIE_RANGE, (a) => !a.removed && !a.tied && a.state !== 'down' && Math.abs(a.pos.y - P.pos.y) < 2.5 && clearLine(g.actors, P.pos.x, P.pos.z, a.pos.x, a.pos.z));
-    const stunned = near.find((a) => a.state === 'stunned');
+    const level = (a) => !a.removed && !a.tied && a.state !== 'down' && Math.abs(a.pos.y - P.pos.y) < 2.5;
+    const dist = (a) => Math.hypot(a.pos.x - P.pos.x, a.pos.z - P.pos.z);
+    const near = g.actors.near(P.pos, TIE_RANGE * 2, level).filter((a) => dist(a) <= TIE_RANGE * 2 && clearLine(g.actors, P.pos.x, P.pos.z, a.pos.x, a.pos.z));
+    const stunned = near.find((a) => a.state === 'stunned' && dist(a) <= TIE_RANGE);
     if (stunned) {
       this.tieJob = { a: stunned, t: 0 };
       return;
     }
-    // Only one that is stunned can be tied.
-    if (near.some((a) => a.kind === 'thug')) {
-      g.hud.toast('Prima stordiscilo col papuc', 1.6);
-      this.fx.sound('nope');
-    }
+    // Only one that is stunned can be tied, and she has to be able to get to it.
+    if (near.some((a) => a.state === 'stunned')) g.hud.toast('Avvicinati', 1.4);
+    else if (near.some((a) => a.kind === 'thug' && dist(a) <= TIE_RANGE)) g.hud.toast('Prima stordiscilo col papuc', 1.6);
+    else return;
+    this.fx.sound('nope');
   }
 
   stepTie(dt) {
@@ -804,6 +809,7 @@ class Combat {
   }
 
   dispose() {
+    this.off?.();
     this.thugs?.dispose();
     this.fx?.dispose();
     for (const p of this.papucs) this.g.scene.remove(p.mesh);
