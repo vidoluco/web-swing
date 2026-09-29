@@ -38,7 +38,7 @@ export const PALETTE = {
   bag: '#6b3f24',
   bagDark: '#4a2915',
   gold: '#d9a441',
-  hair: '#dcd6cc',
+  hair: '#d2c2a4',
 };
 
 const COMMON = /* glsl */ `

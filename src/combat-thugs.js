@@ -69,6 +69,8 @@ class Brain {
     this.los = true;
     this.losT = 0;
     this.fleeT = 0;
+    this.spot = null;
+    this.spotT = 0;
     this.pose = 0; // 0 arm down, 1 raised, -1 swung
     this.reach = bat ? BAT_REACH : REACH;
     this.dmg = bat ? 14 : 8;
@@ -318,9 +320,12 @@ export class Thugs {
       case 'flee': {
         b.pose = 0;
         b.fleeT -= dt;
-        const away = Math.atan2(-dx, -dz);
-        const spot = this.actors.randomWalkPoint({ x: a.pos.x + Math.sin(away) * 30, z: a.pos.z + Math.cos(away) * 30 }, 14);
-        this.actors.walkTo(a, spot.x, spot.z, a.speedRun);
+        if ((b.spotT -= dt) <= 0 || !b.spot) {
+          b.spotT = 0.8;
+          const away = Math.atan2(-dx, -dz);
+          b.spot = this.actors.randomWalkPoint({ x: a.pos.x + Math.sin(away) * 30, z: a.pos.z + Math.cos(away) * 30 }, 14);
+        }
+        this.actors.walkTo(a, b.spot.x, b.spot.z, a.speedRun);
         if (b.fleeT <= 0 || d > 55) b.state = 'idle';
         break;
       }

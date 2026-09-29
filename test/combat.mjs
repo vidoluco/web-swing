@@ -524,6 +524,30 @@ try {
     r.blow.includes('punch') && r.throwAndTie.includes('thrown') && r.throwAndTie.includes('tie') && r.dodge.includes('dodge') && r.hurt.includes('hurt') && r.low.includes('lowHealth') && r.down.includes('knockout'),
     r,
   );
+
+  // 19. The real keys in the real loop (no stepping by the test): J four times downs a thug, Q throws the papuc.
+  {
+    const live = await open(browser, 'shot=street&lowq', errors, 800, 450);
+    await live.evaluate(() => {
+      const g = window.__game;
+      g.player.reset();
+      g.player.pos.set(-300, 0, 12);
+      g.player.groundBox = null;
+      g.actors.clear();
+      window.__th = g.combat.spawnThug(-300, 9.8, { exact: true });
+      window.__far = g.actors.spawn('thug', { x: -300, z: -6 }, { exact: true, persist: true });
+    });
+    await live.waitForTimeout(400);
+    for (let i = 0; i < 4; i++) {
+      await live.keyboard.press('KeyJ');
+      await live.waitForTimeout(400);
+    }
+    await live.keyboard.press('KeyQ');
+    await live.waitForTimeout(1500);
+    r = await live.evaluate(() => ({ near: window.__th.state, farHp: window.__far.hp, blows: window.__game.combat.state().blows, papucs: window.__game.combat.state().papucs.length }));
+    check('the J key and Q in the real loop: the combo downs the near thug, the papuc hits the far one', r.near === 'down' && r.farHp < 60 && r.blows >= 5 && r.papucs === 0, r);
+    await live.close();
+  }
 } catch (e) {
   console.log('CRASH', e);
   results.push({ name: 'crash', ok: false });

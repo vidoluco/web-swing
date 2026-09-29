@@ -568,8 +568,10 @@ class Combat {
     g.scene.add(mesh);
     this.papucs.push({ mesh, pos: from.clone(), dir: dir.clone(), target, state: 'out', dist: 0, hit: new Set(), fire: !!g.buffs?.has?.('fire'), age: 0 });
     this.throwCool = 0.25;
-    this.pose = THROW_POSE;
-    this.poseT = 0.3;
+    if (P.mode === 'ground' || P.mode === 'air') {
+      this.pose = THROW_POSE;
+      this.poseT = 0.3;
+    }
     this.lastCombat = this.time;
     this.fx.sound('thrown');
     this.say('thrown', 3);
@@ -648,7 +650,7 @@ class Combat {
 
   tryTie() {
     const g = this.g, P = g.player;
-    if (this.tieJob) return;
+    if (this.tieJob || P.mode !== 'ground') return;
     const level = (a) => !a.removed && !a.tied && a.state !== 'down' && Math.abs(a.pos.y - P.pos.y) < 2.5;
     const dist = (a) => Math.hypot(a.pos.x - P.pos.x, a.pos.z - P.pos.z);
     const near = g.actors.near(P.pos, TIE_RANGE * 2, level).filter((a) => dist(a) <= TIE_RANGE * 2 && clearLine(g.actors, P.pos.x, P.pos.z, a.pos.x, a.pos.z));
