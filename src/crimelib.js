@@ -18,7 +18,7 @@ export function roadsAround(city, x, z, R) {
   return out;
 }
 
-// The road segment closest to (x, z) within maxD: its two ends and the distance, or null.
+// The road segment closest to (x, z) within maxD: its two ends, the closest point on it and the distance, or null.
 function nearestSegment(city, x, z, maxD) {
   let best = null, bd = maxD;
   for (const r of roadsAround(city, x, z, maxD)) {
@@ -27,7 +27,7 @@ function nearestSegment(city, x, z, maxD) {
       const ex = p[i + 2] - p[i], ez = p[i + 3] - p[i + 1];
       const t = clamp(((x - p[i]) * ex + (z - p[i + 1]) * ez) / (ex * ex + ez * ez || 1), 0, 1);
       const d = Math.hypot(x - p[i] - ex * t, z - p[i + 1] - ez * t);
-      if (d < bd) (bd = d), (best = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3] });
+      if (d < bd) (bd = d), (best = { ax: p[i], az: p[i + 1], bx: p[i + 2], bz: p[i + 3], px: p[i] + ex * t, pz: p[i + 1] + ez * t });
     }
   }
   return best && { ...best, d: bd };
@@ -65,42 +65,47 @@ class Heap {
 }
 
 // A route over the loaded roads from `from` to `to` ({x, z} each) as flat [x, z, ...] starting at
-// `from`, or null when no road is near either end. A* over the road vertices that traffic uses
-// (city.roadNodes). One way streets are respected unless opts.anyWay. Gives up after opts.limit
-// expansions and returns the way to the closest vertex it reached.
+// `from` and ending on the road nearest to `to`, or null when no road is near either end. A* over
+// the road vertices that traffic uses (city.roadNodes). One way streets are respected unless
+// opts.anyWay. Gives up after opts.limit expansions and returns the way to the closest vertex it
+// reached.
 export function planRoute(city, from, to, opts = {}) {
   const s = nearestSegment(city, from.x, from.z, 90), e = nearestSegment(city, to.x, to.z, 180);
   if (!s || !e) return null;
-  const goals = new Set([roadKey(e.ax, e.az), roadKey(e.bx, e.bz)]);
+  // Both on one segment: straight along it.
+  if (s.ax === e.ax && s.az === e.az && s.bx === e.bx && s.bz === e.bz) return [from.x, from.z, e.px, e.pz];
+  const ends = new Set([roadKey(e.ax, e.az), roadKey(e.bx, e.bz)]);
+  const GOAL = -1; // the point on the last segment nearest to `to`, reached from either end of it
   const nodes = new Map(), heap = new Heap();
   const h = (x, z) => Math.hypot(x - to.x, z - to.z);
-  const put = (x, z, g, prev) => {
-    const key = roadKey(x, z), n = nodes.get(key);
+  const put = (key, x, z, g, prev) => {
+    const n = nodes.get(key);
     if (n && n.g <= g) return;
     nodes.set(key, { x, z, g, prev, done: false });
     heap.push(g + h(x, z), key);
   };
-  put(s.ax, s.az, Math.hypot(from.x - s.ax, from.z - s.az), null);
-  put(s.bx, s.bz, Math.hypot(from.x - s.bx, from.z - s.bz), null);
+  put(roadKey(s.ax, s.az), s.ax, s.az, Math.hypot(from.x - s.ax, from.z - s.az), null);
+  put(roadKey(s.bx, s.bz), s.bx, s.bz, Math.hypot(from.x - s.bx, from.z - s.bz), null);
   let end = null, near = null, nearD = Infinity;
   for (let n = 0; heap.a.length && n < (opts.limit ?? 6000); n++) {
     const [, key] = heap.pop();
     const node = nodes.get(key);
     if (node.done) continue;
     node.done = true;
-    const d = h(node.x, node.z);
-    if (d < nearD) (nearD = d), (near = key);
-    if (goals.has(key)) {
+    if (key === GOAL) {
       end = key;
       break;
     }
+    const d = h(node.x, node.z);
+    if (d < nearD) (nearD = d), (near = key);
+    if (ends.has(key)) put(GOAL, e.px, e.pz, node.g + Math.hypot(e.px - node.x, e.pz - node.z), key);
     for (const [road, i] of city.roadNodes.get(key) || []) {
       const m = road.pts.length / 2;
       for (const dir of road.oneway && !opts.anyWay ? [1] : [1, -1]) {
         const j = i + dir;
         if (j < 0 || j >= m) continue;
         const x = road.pts[2 * j], z = road.pts[2 * j + 1];
-        put(x, z, node.g + Math.hypot(x - node.x, z - node.z), key);
+        put(roadKey(x, z), x, z, node.g + Math.hypot(x - node.x, z - node.z), key);
       }
     }
   }
@@ -109,7 +114,9 @@ export function planRoute(city, from, to, opts = {}) {
   const pts = [];
   for (let k = end; k !== null; k = nodes.get(k).prev) pts.push(nodes.get(k).x, nodes.get(k).z);
   const out = [from.x, from.z];
-  for (let i = pts.length - 2; i >= 0; i -= 2) out.push(pts[i], pts[i + 1]);
+  for (let i = pts.length - 2; i >= 0; i -= 2) {
+    if (Math.hypot(pts[i] - out[out.length - 2], pts[i + 1] - out[out.length - 1]) > 0.05) out.push(pts[i], pts[i + 1]);
+  }
   return out;
 }
 
@@ -140,8 +147,24 @@ export class RoadDriver {
     return this.cum[this.cum.length - 1] - this.cum[k] - Math.min(Math.hypot(c.x - p[2 * k], c.z - p[2 * k + 1]), this.cum[k + 1] - this.cum[k]);
   }
 
+  // Keeps the car within 2.6 m of the route, so that a fast bend never puts it on the pavement.
+  rail() {
+    const c = this.car, p = this.pts, n = p.length / 2;
+    let best = 1e9, bx = c.x, bz = c.z;
+    for (let k = this.seg; k < Math.min(this.seg + 2, n - 1); k++) {
+      const ex = p[2 * k + 2] - p[2 * k], ez = p[2 * k + 3] - p[2 * k + 1];
+      const t = clamp(((c.x - p[2 * k]) * ex + (c.z - p[2 * k + 1]) * ez) / (ex * ex + ez * ez || 1), 0, 1);
+      const x = p[2 * k] + ex * t, z = p[2 * k + 1] + ez * t, d = Math.hypot(c.x - x, c.z - z);
+      if (d < best) (best = d), (bx = x), (bz = z);
+    }
+    if (best > 2.6) {
+      c.x = bx + ((c.x - bx) / best) * 2.6;
+      c.z = bz + ((c.z - bz) / best) * 2.6;
+    }
+  }
+
   // Moves the car for dt seconds at up to `cruise` m/s (0 to brake to a stop).
-  update(dt, cruise, laneShift = 1.7) {
+  update(dt, cruise, laneShift = 1.4) {
     const c = this.car, p = this.pts, tr = this.traffic;
     let want = cruise, yawTo = c.yaw;
     if (p && !this.done) {
@@ -151,8 +174,17 @@ export class RoadDriver {
         if (((c.x - p[2 * k]) * ex + (c.z - p[2 * k + 1]) * ez) / (ex * ex + ez * ez || 1) < 1 && Math.hypot(c.x - p[2 * k + 2], c.z - p[2 * k + 3]) > 3) break;
         this.seg++;
       }
+      // Slow down for the bend ahead: the more the road turns within the next 30 m, the slower.
+      let bend = 0, ahead = 0;
+      const a0 = Math.atan2(p[2 * this.seg + 2] - p[2 * this.seg], p[2 * this.seg + 3] - p[2 * this.seg + 1]);
+      for (let j = this.seg + 1; j < n - 1 && ahead < 30; j++) {
+        const a = Math.atan2(p[2 * j + 2] - p[2 * j], p[2 * j + 3] - p[2 * j + 1]);
+        bend = Math.max(bend, Math.abs(Math.atan2(Math.sin(a - a0), Math.cos(a - a0))));
+        ahead += Math.hypot(p[2 * j + 2] - p[2 * j], p[2 * j + 3] - p[2 * j + 1]);
+      }
+      want = Math.min(want, cruise * clamp(1.2 - bend * 0.8, 0.3, 1));
       // Look ahead along the route, further when faster, and aim a lane's width to the right of it.
-      let k = this.seg, ax = c.x, az = c.z, look = clamp(5 + Math.abs(c.speed) * 0.45, 6, 20), tx = ax, tz = az, hx = 0, hz = 1;
+      let k = this.seg, ax = c.x, az = c.z, look = clamp(3 + Math.abs(c.speed) * 0.35, 4, 14), tx = ax, tz = az, hx = 0, hz = 1;
       for (; k < n - 1; k++) {
         const bx = p[2 * k + 2], bz = p[2 * k + 3], L = Math.hypot(bx - ax, bz - az);
         hx = (bx - ax) / (L || 1);
@@ -191,6 +223,7 @@ export class RoadDriver {
     c.vz = Math.cos(c.yaw) * c.speed;
     c.x += c.vx * dt;
     c.z += c.vz * dt;
+    if (p && !this.done) this.rail();
     const yawRate = Math.atan2(Math.sin(c.yaw - oy), Math.cos(c.yaw - oy)) / dt;
     c.steer = c.speed > 1 ? clamp((-yawRate * c.len * 0.6) / c.speed, -0.5, 0.5) : 0;
     tr.poseObj(c, dt);
