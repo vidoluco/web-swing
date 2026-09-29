@@ -588,6 +588,7 @@ const game = {
   input,
   events,
   actors, // actors:
+  gfx: { composer, csm, sky }, // light: the render pieces src/env.js takes over
   hud,
   save,
   minimap,
