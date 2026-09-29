@@ -8,7 +8,10 @@ import { fadeTexture } from './beams.js';
 // props the city puts on top of the roof.
 
 const cache = new Map();
+// Only the cities with a collect.json (tools/make-collectibles.mjs); asking for the others would be a 404.
+const CITIES_WITH_DATA = ['bucharest', 'brasov'];
 export function loadCollect(cityId) {
+  if (!CITIES_WITH_DATA.includes(cityId)) return Promise.resolve(null);
   if (!cache.has(cityId)) {
     cache.set(
       cityId,

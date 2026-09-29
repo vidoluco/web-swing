@@ -139,18 +139,19 @@ try {
     g.hud.setObjective(null);
     const objOff = $('objective').classList.contains('hidden');
     let calls = 0, sawGame = false;
+    const panels0 = $('hud-panels').children.length; // the systems' own panels are there already
     const late = g.hud.add('late', { order: 5, render(el, game) { calls++; sawGame = game === g; el.textContent = 'late ' + calls; } });
     const early = g.hud.add('early', { order: 1, render(el) { el.textContent = 'early'; } });
     const span = document.createElement('span');
     span.textContent = 'element';
     const raw = g.hud.add('raw', span);
     g.advance(1);
-    const order = [...$('hud-panels').children].sort((x, y) => x.getBoundingClientRect().left - y.getBoundingClientRect().left || x.getBoundingClientRect().top - y.getBoundingClientRect().top).map((e) => e.dataset.id);
+    const order = [...$('hud-panels').children].filter((e) => ['raw', 'early', 'late'].includes(e.dataset.id)).sort((x, y) => x.getBoundingClientRect().left - y.getBoundingClientRect().left || x.getBoundingClientRect().top - y.getBoundingClientRect().top).map((e) => e.dataset.id);
     const res = { toastOn, toastOff, objOn, objOff, calls, sawGame, order, rawHas: raw.contains(span), parent: early.parentElement.id, texts: [early.textContent, late.textContent] };
     g.hud.remove('late');
     g.hud.remove('early');
     g.hud.remove('raw');
-    res.removed = $('hud-panels').children.length;
+    res.removed = $('hud-panels').children.length - panels0;
     return res;
   });
   check('hud: toast shows and fades, objective line sets and clears', r.toastOn && r.toastOff && r.objOn && r.objOff, r);
@@ -169,6 +170,7 @@ try {
     const magenta = ([r, gg, b]) => r > 235 && gg < 25 && b > 235;
     const cx = c.width / 2, cy = c.height / 2;
     const draw = () => mm.draw(1, p, 0, null);
+    const owners0 = mm.markers.size; // the systems' own markers are there already
     const res = {};
     mm.setMarkers('t1', [{ x: p.x + 50, z: p.z, color: '#ff00ff', shape: 'dot' }, { x: p.x, z: p.z + 40, color: '#ff00ff', shape: 'square' }, { x: p.x - 50, z: p.z, color: '#ff00ff', shape: 'ring', label: 'Test' }]);
     draw();
@@ -188,7 +190,7 @@ try {
     mm.setMarkers('t1', []);
     mm.setMarkers('t2', null);
     draw();
-    res.cleared = !magenta(px(cx + 50 * s, cy + 60 * s)) && !magenta(px(c.width - 16, cy)) && mm.markers.size === 0;
+    res.cleared = !magenta(px(cx + 50 * s, cy + 60 * s)) && !magenta(px(c.width - 16, cy)) && mm.markers.size === owners0;
     return res;
   });
   check('minimap: markers draw by shape, off-map ones stick to the edge, an owner replaces or clears its own set', Object.values(r).every(Boolean), r);
