@@ -15,6 +15,9 @@ uniform float uBands, uInkW, uInkDepth, uInkColorK, uInkStrength;
 uniform vec3 uInk, uRimCol;
 uniform vec2 uRimDir;
 uniform float uRimK;
+uniform vec4 uLamp[16];
+uniform float uLampN;
+uniform vec3 uLampCol;
 
 const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
 
@@ -53,26 +56,15 @@ float hash12(vec2 p) {
   return fract((p3.x + p3.y) * p3.z);
 }
 
-void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor) {
-  vec3 col = inputColor.rgb;
-  float z0 = depth >= 0.999999 ? 1.0e5 : -getViewZ(depth);
+// Haze at this pixel, applied to any colour by look().
+float gT = 1.0;
+vec3 gHaze = vec3(0.0);
+vec3 gLamp = vec3(0.0);
 
-  // Aerial perspective: height fog integrated along the view ray, tinted toward the sun on its side.
-  if (uHaze > 0.0 && depth < 0.999999) {
-    vec4 vp = uInvProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
-    vec3 vdir = vp.xyz / vp.w;
-    float dist = z0 * length(vdir) / -vdir.z;
-    vec3 rd = normalize((uCamWorld * vec4(vdir, 0.0)).xyz);
-    float k = uHazeK;
-    float dy = clamp(k * rd.y * dist, -8.0, 8.0);
-    float ray = abs(rd.y) > 1e-4 ? (1.0 - exp(-dy)) / (k * rd.y) : dist;
-    float f = uHaze * exp(-k * max(uCamPos.y, 0.0)) * ray;
-    float T = exp(-f);
-    float sunAmt = pow(max(dot(rd, uSunDirW), 0.0), 4.0);
-    vec3 hc = mix(uHazeCol, uHazeSunCol, sunAmt * uHazeSunK);
-    col = col * T + hc * (1.0 - T);
-  }
-
+// Haze, exposure, tone mapping and colour grade of one linear colour.
+vec3 look(vec3 col) {
+  col += gLamp * (0.05 + 0.5 * dot(col, LW));
+  col = col * gT + gHaze * (1.0 - gT);
   col *= uExposure;
   vec3 c = mix(neutral(col), aces(col), uAces);
   if (uStyle > 0.5 && uStyle < 1.5) c = pow(c, vec3(0.93));
@@ -80,7 +72,43 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
   c = mix(vec3(l), c, uSat);
   c = (c - 0.18) * uContrast + 0.18;
   c = c * uGain + uLift * (1.0 - c);
-  c = max(c, 0.0);
+  return max(c, 0.0);
+}
+
+void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor) {
+  float z0 = depth >= 0.999999 ? 1.0e5 : -getViewZ(depth);
+
+  if (depth < 0.999999 && (uHaze > 0.0 || uLampN > 0.5)) {
+    vec4 vp = uInvProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+    vec3 vdir = vp.xyz / vp.w;
+    float dist = z0 * length(vdir) / -vdir.z;
+    vec3 rd = normalize((uCamWorld * vec4(vdir, 0.0)).xyz);
+
+    // Aerial perspective: height fog integrated along the view ray, tinted toward the sun on its side.
+    if (uHaze > 0.0) {
+      float k = uHazeK;
+      float dy = clamp(k * rd.y * dist, -8.0, 8.0);
+      float ray = abs(rd.y) > 1e-4 ? (1.0 - exp(-dy)) / (k * rd.y) : dist;
+      float f = uHaze * exp(-k * max(uCamPos.y, 0.0)) * ray;
+      gT = exp(-f);
+      float sunAmt = pow(max(dot(rd, uSunDirW), 0.0), 4.0);
+      gHaze = mix(uHazeCol, uHazeSunCol, sunAmt * uHazeSunK);
+    }
+
+    // Street lamps at night: a warm pool around each of the nearest, strongest on the ground below it.
+    if (uLampN > 0.5 && dist < 160.0) {
+      vec3 wp = uCamPos + rd * dist;
+      for (int i = 0; i < 16; i++) {
+        if (float(i) >= uLampN) break;
+        vec3 dl = wp - uLamp[i].xyz;
+        float r2 = dot(dl, dl);
+        float fall = 1.0 / (1.0 + r2 * 0.02) * (1.0 - smoothstep(16.0, 30.0, sqrt(r2)));
+        fall *= smoothstep(6.0, 0.0, wp.y - uLamp[i].y);
+        gLamp += uLampCol * fall;
+      }
+    }
+  }
+  vec3 c = look(inputColor.rgb);
 
   if (uRimK > 0.0 && z0 < 9.0e4) {
     // Rim light: the edge of a shape that faces the light, where the ground behind it is much farther away.
@@ -91,11 +119,17 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
   }
 
   if (uStyle > 1.5) {
-    // Flat light bands that keep the hue, then a bit more colour.
+    // Flat light bands that keep the hue. The band is picked from the neighbourhood, so texture grain does
+    // not flicker between bands; a share of the local colour is kept for the detail.
+    vec2 sp = texelSize * 2.2;
+    vec3 avg = (texture2D(inputBuffer, uv + vec2(sp.x, 0.0)).rgb + texture2D(inputBuffer, uv - vec2(sp.x, 0.0)).rgb
+              + texture2D(inputBuffer, uv + vec2(0.0, sp.y)).rgb + texture2D(inputBuffer, uv - vec2(0.0, sp.y)).rgb) * 0.25;
+    vec3 soft = look(avg);
+    c = mix(c, soft, 0.55);
     float L = dot(c, LW);
     float x = L * uBands;
     float fr = fract(x);
-    float w = fwidth(x) * 1.2 + 0.03;
+    float w = fwidth(x) * 1.5 + 0.05;
     float Lq = (floor(x) + smoothstep(0.5 - w, 0.5 + w, fr)) / uBands;
     c *= (Lq + 0.03) / (L + 0.03);
     float l2 = dot(c, LW);
@@ -139,7 +173,7 @@ export class GradeEffect extends Effect {
         ['uSunDirW', new THREE.Uniform(new V(0, 1, 0))], ['uCamPos', new THREE.Uniform(new V())],
         ['uInvProj', new THREE.Uniform(new M())], ['uCamWorld', new THREE.Uniform(new M())],
         ['uBands', new THREE.Uniform(4)], ['uInkW', new THREE.Uniform(1.3)], ['uInkDepth', new THREE.Uniform(0.035)],
-        ['uInkColorK', new THREE.Uniform(0.5)], ['uRimK', new THREE.Uniform(0)], ['uRimDir', new THREE.Uniform(new THREE.Vector2(0.6, 0.8))], ['uRimCol', new THREE.Uniform(new V(1, 0.8, 0.6))], ['uInkStrength', new THREE.Uniform(0.92)], ['uInk', new THREE.Uniform(new V(0.06, 0.05, 0.1))],
+        ['uInkColorK', new THREE.Uniform(0.5)], ['uRimK', new THREE.Uniform(0)], ['uLamp', new THREE.Uniform(Array.from({ length: 16 }, () => new THREE.Vector4()))], ['uLampN', new THREE.Uniform(0)], ['uLampCol', new THREE.Uniform(new V(1.0, 0.6, 0.28))], ['uRimDir', new THREE.Uniform(new THREE.Vector2(0.6, 0.8))], ['uRimCol', new THREE.Uniform(new V(1, 0.8, 0.6))], ['uInkStrength', new THREE.Uniform(0.92)], ['uInk', new THREE.Uniform(new V(0.06, 0.05, 0.1))],
       ]),
     });
     this.camera = camera;

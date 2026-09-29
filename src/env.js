@@ -7,6 +7,7 @@ import { SkyDome, setSkyUniforms, atmosphere, makeAtmosphere, profileFor } from 
 import { EnvMaps } from './envmap.js';
 import { GradeEffect } from './grade.js';
 import { restyleWater } from './water.js';
+import { LampPools } from './lamps.js';
 import { STYLES, STYLE_IDS } from './styles.js';
 
 // The light and the look of the game: the day and night cycle (sun, moon, sky, stars, fog, shadows, image
@@ -22,7 +23,43 @@ const START_HOURS = 17.5;
 const SUN_INTENSITY = 3.2; // the sun's light at noon, as tuned for the old sky
 const MOON_INTENSITY = 1.1;
 
+// The CSM add-on replaces lights_fragment_begin with a copy that predates three r186: it never looks up the
+// DFG table (material.dfg) or sets the multi-scattering factor, so every specular term, the sun's glints and the
+// reflections of the sky included, came out as zero. The block is put back into the copy. Then that specular
+// light gets a rough-surface damping: asphalt, plaster and grass scatter it instead of shining like a mirror
+// at grazing angles, while water, glass and paint keep the whole reflection.
+function repairLightChunks() {
+  const { ShaderChunk } = THREE;
+  const begin = ShaderChunk.lights_fragment_begin;
+  if (!begin.includes('material.dfg') && begin.includes('IncidentLight directLight;')) {
+    ShaderChunk.lights_fragment_begin = begin.replace(
+      'IncidentLight directLight;',
+      `#ifdef STANDARD
+	float dotNVms = saturate( dot( geometryNormal, geometryViewDir ) );
+	material.dfg = texture2D( dfgLUT, vec2( material.roughness, dotNVms ) ).rg;
+	#if ( NUM_SUN_LIGHTS > 0 || NUM_DIR_LIGHTS > 0 || NUM_POINT_LIGHTS > 0 || NUM_SPOT_LIGHTS > 0 )
+		float EssMs = material.dfg.x + material.dfg.y;
+		material.multiScatteringCompensation = 1.0 + material.specularColorBlended * ( 1.0 / EssMs - 1.0 );
+	#endif
+#endif
+IncidentLight directLight;`
+    );
+  }
+  const end = ShaderChunk.lights_fragment_end;
+  if (!end.includes('rough-damp')) {
+    ShaderChunk.lights_fragment_end = end.replace(
+      'RE_IndirectSpecular( radiance,',
+      `#ifdef STANDARD
+	radiance *= mix( 1.0, 0.3, smoothstep( 0.55, 0.95, material.roughness ) ); // rough-damp
+	#endif
+	RE_IndirectSpecular( radiance,`
+    );
+  }
+  return ShaderChunk.lights_fragment_begin.includes('material.dfg') && ShaderChunk.lights_fragment_end.includes('rough-damp');
+}
+
 export function create(game) {
+  const specularRepaired = repairLightChunks();
   const { scene, camera, renderer, params, save } = game;
   const gfx = game.gfx;
   const profile = profileFor(game.cityId);
@@ -54,6 +91,8 @@ export function create(game) {
   let bloom = null, bloomPass = null, gradePass = null, n8 = null;
   let waterU = null;
   let ui = null;
+  let lamps = null;
+  let lampT = 0;
   let offKey = null;
   const hemi = scene.children.find((o) => o.isHemisphereLight);
   const baseHemi = hemi ? { intensity: hemi.intensity } : null;
@@ -92,6 +131,7 @@ export function create(game) {
     for (const l of gfx.csm.lights) l.shadow.radius = st.shadow;
     if (waterU) {
       waterU.uWaterStyle.value = st.water;
+      waterU.uWGlow.value = st.waterGlow;
       waterU.uDeep.value.set(st.deep);
       waterU.uShallow.value.set(st.shallow);
     }
@@ -148,7 +188,7 @@ export function create(game) {
       const m = game.city?.mats?.water;
       if (m) {
         m.envMapRotation.y = scene.environmentRotation.y;
-        m.envMapIntensity = 1.35 * (0.3 + 0.7 * Math.min(1, atm.sunK + 0.45));
+        m.envMapIntensity = 1.35 * st.waterEnv * (0.3 + 0.7 * Math.min(1, atm.sunK + 0.45));
       }
     }
 
@@ -163,6 +203,8 @@ export function create(game) {
     // Grade and haze.
     grade.set('uExposure', atm.ex * st.exposure);
     grade.set('uNight', night);
+    const lk = night * st.lamp;
+    grade.set('uLampCol', [1.0 * lk, 0.6 * lk, 0.28 * lk]);
     grade.set('uHaze', 1.6e-4 * profile.haze * st.haze);
     grade.set('uHazeK', 1 / profile.hazeScale);
     grade.set('uHazeCol', [atm.fog.r, atm.fog.g, atm.fog.b]);
@@ -242,7 +284,7 @@ export function create(game) {
       return styleId;
     },
     get night() {
-      return night;
+      return uniforms.uNight.value;
     },
     get running() {
       return running;
@@ -251,6 +293,8 @@ export function create(game) {
       running = !!v;
     },
     styles: STYLES,
+    maps: envMaps,
+    specularRepaired,
     setTime(h) {
       hours = wrapHours(h);
       phase = null;
@@ -309,6 +353,7 @@ export function create(game) {
       addEventListener('keydown', onKey);
       offKey = () => removeEventListener('keydown', onKey);
 
+      lamps = new LampPools(game.city);
       applyStyle();
       applyTime();
     },
@@ -320,6 +365,19 @@ export function create(game) {
       }
       if (dirty) applyTime();
       sky.material.uniforms.uTime.value = game.time;
+      // Street light pools: pick the nearest lamps four times a second, only while it is dark.
+      if (night > 0.05) {
+        if ((lampT -= dt) <= 0) {
+          lampT = 0.25;
+          const n = lamps.update(camera.position.x, camera.position.z);
+          const arr = grade.uniforms.get('uLamp').value;
+          for (let i = 0; i < n; i++) arr[i].set(lamps.data[i][0], lamps.data[i][1], lamps.data[i][2], 0);
+          grade.set('uLampN', n);
+        }
+      } else if (lampT !== 0) {
+        lampT = 0;
+        grade.set('uLampN', 0);
+      }
     },
 
     dispose() {
