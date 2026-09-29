@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { clamp } from './config.js';
 import { osmBuildingMaterial, surfaceMaterial, markingMaterial, waterMaterial, treeMaterials } from './materials2.js';
+import { Terrain } from './terrain.js'; // terrain:
+import { HillSign } from './hillsign.js'; // terrain:
 
 // Bucharest rebuilt from OpenStreetMap chunks (see tools/osm-build.mjs).
 // Buildings are prisms: a footprint polygon (with holes) between y0 and y1. Everything the
@@ -8,6 +10,8 @@ import { osmBuildingMaterial, surfaceMaterial, markingMaterial, waterMaterial, t
 
 const CELL = 32;
 const PARAPET = 0.8;
+const LIFT = 0.03; // terrain: streets lie this far above the ground, the mesh under them can be a few cm off
+const FOUNDATION = 0.35; // terrain: how far the walls of a building on a slope reach below its base
 const _v = new THREE.Vector3();
 
 function ringArea(xs) {
@@ -25,6 +29,18 @@ function pointInRing(x, z, r) {
     if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
   }
   return c;
+}
+
+// The polyline with points added so no piece is longer than 6 m.
+function densify(pts) {
+  const out = [pts[0], pts[1]];
+  for (let i = 2; i < pts.length; i += 2) {
+    const ax = pts[i - 2], az = pts[i - 1], bx = pts[i], bz = pts[i + 1];
+    const k = Math.ceil(Math.hypot(bx - ax, bz - az) / 6);
+    for (let j = 1; j < k; j++) out.push(ax + ((bx - ax) * j) / k, az + ((bz - az) * j) / k);
+    out.push(bx, bz);
+  }
+  return out;
 }
 
 export const roadKey = (x, z) => (Math.round(x * 2) + 100000) * 400000 + Math.round(z * 2) + 100000;
@@ -68,9 +84,12 @@ export function closestOnPrism(x, z, b, out) {
 
 export class OsmCity {
   // base is the city folder, public/city/<id>; spawnFacing is the point the start roof looks at.
-  static async load(base, scene, envMap, textures, onProgress, spawnFacing) {
+  // options: { sign } a row of big letters on a hillside (cities.js), { spawn } { x, z, r } where to look for the start roof
+  static async load(base, scene, envMap, textures, onProgress, spawnFacing, options = {}) {
     const index = await fetch(`${base}/index.json`).then((r) => r.json());
     const city = new OsmCity(scene, envMap, textures, index, base);
+    // terrain: the grid comes first, the buildings, roads and trees are laid on it as they are built
+    if (index.dem) city.terrain = new Terrain(index.dem, await fetch(`${base}/${index.dem.file}`).then((r) => r.arrayBuffer()));
     const lod = await fetch(`${base}/lod.bin`).then((r) => (r.ok ? r.arrayBuffer() : null));
     if (lod) city.buildLOD(new Float32Array(lod));
     if (index.map) {
@@ -85,9 +104,12 @@ export class OsmCity {
       u.uCityBox.value.set(index.map.x0, index.map.z0, index.map.x1, index.map.z1);
       u.uHasCity.value = 1;
     }
+    if (city.terrain) city.attachTerrain(textures); // terrain:
+    if (options.sign && city.terrain) city.sign = new HillSign(city, options.sign); // terrain:
+    if (options.treeTint !== undefined) city.mats.crown.color.set(options.treeTint); // terrain: darker crowns
     // The first ring around the origin is loaded up front so the start tower exists.
     await city.streamAround(0, 0, 1100, onProgress);
-    city.finish(spawnFacing);
+    city.finish(spawnFacing, options.spawn);
     return city;
   }
 
@@ -139,6 +161,9 @@ export class OsmCity {
     this.scene = scene;
     this.envMap = envMap;
     this.index = index;
+    this.terrain = null; // terrain: set by load() for a city with a dem
+    this.clearings = null; // terrain: [(x, z) => bool] places where no trees are planted
+    this.extraGreens = null; // terrain: [kind, outer, holes] painted on the ground next to the ones of the chunks
     this.prisms = [];
     this.grid = new Map();
     this.waterGrid = new Map();
@@ -152,6 +177,7 @@ export class OsmCity {
       grass: surfaceMaterial('grass', textures),
       plaza: surfaceMaterial('plaza', textures),
       marking: markingMaterial(),
+      trail: new THREE.MeshStandardMaterial({ color: 0x6a5c48, roughness: 1, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), // terrain: paths in the woods
       rail: new THREE.MeshStandardMaterial({ color: 0x3a3a3c, roughness: 0.4, metalness: 0.8, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 }),
       water: waterMaterial(envMap, textures),
       ...treeMaterials(),
@@ -162,6 +188,23 @@ export class OsmCity {
     g.receiveShadow = true;
     scene.add(g);
     this.groundMesh = g;
+  }
+
+  // terrain: the ground of a city with relief. The flat plane goes, the far mesh and the tiles around
+  // the start take its place; the land-use map of the ground paints it.
+  attachTerrain(textures) {
+    const m = this.index.map, T = this.terrain;
+    const fallback = new THREE.DataTexture(new Uint8Array([128, 128, 120, 255]), 1, 1);
+    fallback.needsUpdate = true;
+    T.makeMaterial({
+      map: m ? this.mats.ground.userData.city.tCity.value : fallback,
+      box: m ? [m.x0, m.z0, m.x1, m.z1] : [-1e5, -1e5, 1e5, 1e5],
+      pavers: textures.pavers,
+      concrete: textures.concrete,
+    });
+    this.scene.remove(this.groundMesh);
+    this.groundMesh.geometry.dispose();
+    T.attach(this.scene, 0, 0, 1100, (mesh) => this.onChunkMesh?.(mesh));
   }
 
   // ---------- chunk building ----------
@@ -183,7 +226,7 @@ export class OsmCity {
     if (pm) group.add(pm);
     this.indexRoads(rec, data.r);
     this.placePois(rec, data.p || []);
-    const lines = this.buildLines(data.r);
+    const lines = this.buildLines(data.r, data.g);
     for (const [key, geo] of Object.entries(lines)) {
       if (!geo) continue;
       const m = new THREE.Mesh(geo, key === 'river' ? this.mats.water : this.mats[key]);
@@ -192,6 +235,7 @@ export class OsmCity {
     }
     const rails = this.buildRails(data.rl);
     if (rails) group.add(new THREE.Mesh(rails, this.mats.rail));
+    this.terrain?.setMask(info.cx, info.cz, this.extraGreens ? data.g.concat(this.extraGreens) : data.g); // terrain: woods, meadows and plazas are painted on the ground
     const areas = this.buildAreas(data.w, data.g);
     for (const [key, geo] of Object.entries(areas)) {
       if (!geo) continue;
@@ -225,7 +269,7 @@ export class OsmCity {
   settlePoi(poi) {
     const cp = {};
     for (let pass = 0; pass < 3; pass++) {
-      const b = this.nearby(poi.x, poi.z, 1, []).find((q) => q.kind !== 'prop' && q.y0 < 1 && pointInPrism2D(poi.x, poi.z, q));
+      const b = this.nearby(poi.x, poi.z, 1, []).find((q) => q.kind !== 'prop' && q.y0 < this.lowGround(q) + 1 && pointInPrism2D(poi.x, poi.z, q));
       if (!b) return;
       closestOnPrism(poi.x, poi.z, b, cp);
       const dx = cp.x - poi.x, dz = cp.z - poi.z, d = Math.hypot(dx, dz) || 1;
@@ -299,6 +343,7 @@ export class OsmCity {
       const c = this.mmCells.get(k);
       if (c) c[type] = c[type].filter((x) => x !== item);
     }
+    this.terrain?.clearMask(rec.info.cx, rec.info.cz); // terrain:
     rec.prisms = [];
     rec.waters = [];
     rec.mm = [];
@@ -331,7 +376,9 @@ export class OsmCity {
     for (let i = 0; i < n; i++) {
       const o = i * 11;
       q.setFromAxisAngle(Yax, -f[o + 4]);
-      m4.compose(p.set(f[o], f[o + 5], f[o + 1]), q, sc.set(Math.max(1, f[o + 2] * 2), Math.max(1, f[o + 6] - f[o + 5]), Math.max(1, f[o + 3] * 2)));
+      // terrain: a box far away stands 4 m deeper, so it never floats over the coarse ground mesh
+      const sink = this.terrain ? 4 : 0;
+      m4.compose(p.set(f[o], f[o + 5] - sink, f[o + 1]), q, sc.set(Math.max(1, f[o + 2] * 2), Math.max(1, f[o + 6] - f[o + 5]) + sink, Math.max(1, f[o + 3] * 2)));
       mesh.setMatrixAt(i, m4);
       m4.toArray(this.lodMatrices, i * 16);
       mesh.setColorAt(i, c.setRGB(f[o + 7], f[o + 8], f[o + 9], THREE.SRGBColorSpace));
@@ -379,7 +426,7 @@ export class OsmCity {
       const rings = [outer, ...holes];
       // Outer rings wind one way, holes the other; the sign makes every wall normal point outward.
       const signs = rings.map((r, i) => (i === 0 ? Math.sign(ringArea(r)) || 1 : -(Math.sign(ringArea(r)) || 1)));
-      const prism = { outer, holes, signs, y0, y1, minx: Infinity, maxx: -Infinity, minz: Infinity, maxz: -Infinity, kind: 'building', name, style: s };
+      const prism = { outer, holes, signs, y0, y1, minx: Infinity, maxx: -Infinity, minz: Infinity, maxz: -Infinity, kind: 'building', name, style: s, pitched: !!rf && !holes.length && outer.length === 8 }; // terrain: pitched: a hipped roof stands over y1
       for (let i = 0; i < outer.length; i += 2) {
         prism.minx = Math.min(prism.minx, outer[i]);
         prism.maxx = Math.max(prism.maxx, outer[i]);
@@ -391,7 +438,8 @@ export class OsmCity {
       b.minx = Math.min(b.minx, prism.minx); b.maxx = Math.max(b.maxx, prism.maxx);
       b.minz = Math.min(b.minz, prism.minz); b.maxz = Math.max(b.maxz, prism.maxz);
       this.mmPut((prism.minx + prism.maxx) / 2, (prism.minz + prism.maxz) / 2, 'b', outer);
-      const parapet = !rf && y1 - y0 > 9 && y0 < 0.5;
+      const parapet = !rf && y1 - y0 > 9 && y0 < this.lowGround(prism) + 0.5;
+      const yb = this.terrain ? y0 - FOUNDATION : y0; // terrain: the walls go a little into the hillside
       if (parapet) this.roofProps(prism, props);
       // Walls.
       for (let ri = 0; ri < rings.length; ri++) {
@@ -411,7 +459,7 @@ export class OsmCity {
           uacc = u1;
           const yt = parapet ? y1 + PARAPET : y1;
           // Two triangles, wound counter-clockwise when seen from outside.
-          const quad = [[ax, y0, az, u0], [bx, y0, bz, u1], [bx, yt, bz, u1], [ax, y0, az, u0], [bx, yt, bz, u1], [ax, yt, az, u0]];
+          const quad = [[ax, yb, az, u0], [bx, yb, bz, u1], [bx, yt, bz, u1], [ax, yb, az, u0], [bx, yt, bz, u1], [ax, yt, az, u0]];
           // Check winding against the normal and flip if needed.
           const c1x = bx - ax, c1y = 0, c1z = bz - az, c2x = 0, c2y = y1 - y0, c2z = 0;
           const cx = c1y * c2z - c1z * c2y, cz = c1x * c2y - c1y * c2x;
@@ -558,13 +606,19 @@ export class OsmCity {
   }
 
   // Road ribbons (with a wider sidewalk ribbon underneath), footways, rivers, centre-line dashes.
-  buildLines(list) {
-    const out = { sidewalk: [], road: [], plaza: [], river: [], marking: [] };
+  buildLines(list, greens = []) {
+    const out = { sidewalk: [], trail: [], road: [], plaza: [], river: [], marking: [] };
+    // terrain: a footway through a wood is a dirt trail, not pavement
+    const woods = this.terrain ? greens.filter((g) => g[0] === 'wood').map((g) => g[1]) : [];
+    const inWood = (pts) => {
+      const x = pts[pts.length >> 2 << 1], z = pts[(pts.length >> 2 << 1) + 1];
+      return woods.some((o) => pointInRing(x, z, o));
+    };
     for (const r of list) {
       const pts = r.pts;
       if (pts.length < 4) continue;
-      if (r.cls === 'river') this.ribbon(out.river, pts, r.w, 0);
-      else if (r.cls === 'foot') this.ribbon(out.sidewalk, pts, r.w, 0);
+      if (r.cls === 'river') this.ribbon(out.river, pts, r.w, 0, 0, true);
+      else if (r.cls === 'foot') this.ribbon(woods.length && inWood(pts) ? out.trail : out.sidewalk, pts, r.w, 0);
       else if (r.cls === 'ped') this.ribbon(out.plaza, pts, r.w, 0);
       else {
         this.ribbon(out.sidewalk, pts, r.w + (r.major ? 7 : 4.5), 0);
@@ -583,7 +637,11 @@ export class OsmCity {
     return res;
   }
 
-  ribbon(acc, pts, w, y, offset = 0) {
+  // A strip along a street. On a city with relief every vertex sits on the ground (a river stays level
+  // across its width), and the street gets a vertex at least every 6 m so it follows the hills.
+  ribbon(acc, pts, w, y, offset = 0, level = false) {
+    const T = this.terrain;
+    if (T) pts = densify(pts);
     const n = pts.length / 2;
     const L = [], R = [], U = [];
     let u = 0;
@@ -606,16 +664,18 @@ export class OsmCity {
       const ox = -dz, oz = dx;
       const hw = (w / 2) * miter;
       if (i > 0) u += Math.hypot(x - pts[(i - 1) * 2], z - pts[(i - 1) * 2 + 1]);
-      L.push([x + ox * (hw + offset), z + oz * (hw + offset)]);
-      R.push([x - ox * (hw - offset), z - oz * (hw - offset)]);
+      const lx = x + ox * (hw + offset), lz = z + oz * (hw + offset), rx = x - ox * (hw - offset), rz = z - oz * (hw - offset);
+      const c = T && level ? T.height(x, z) + LIFT : 0;
+      L.push([lx, lz, y + (T ? (level ? c : T.height(lx, lz) + LIFT) : 0)]);
+      R.push([rx, rz, y + (T ? (level ? c : T.height(rx, rz) + LIFT) : 0)]);
       U.push(u);
     }
-    acc.push({ L, R, U, y });
+    acc.push({ L, R, U });
   }
 
   ribbonGeometry(ribbons) {
     const pos = [], uv = [];
-    for (const { L, R, U, y } of ribbons) {
+    for (const { L, R, U } of ribbons) {
       for (let i = 0; i < L.length - 1; i++) {
         const a = L[i], b = R[i], c = L[i + 1], d = R[i + 1];
         // Wind so the face points up (+y).
@@ -623,7 +683,7 @@ export class OsmCity {
           const cy = (r[0] - p[0]) * (q[1] - p[1]) - (q[0] - p[0]) * (r[1] - p[1]);
           const T = cy > 0 ? [[p, up], [q, uq], [r, ur]] : [[p, up], [r, ur], [q, uq]];
           for (const [P, UU] of T) {
-            pos.push(P[0], y, P[1]);
+            pos.push(P[0], P[2], P[1]);
             uv.push(UU[0], UU[1]);
           }
         };
@@ -635,7 +695,15 @@ export class OsmCity {
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     const nor = new Float32Array(pos.length);
-    for (let i = 1; i < nor.length; i += 3) nor[i] = 1;
+    if (this.terrain) {
+      const n = _v;
+      for (let i = 0; i < pos.length; i += 3) {
+        this.terrain.smooth(pos[i], pos[i + 2], n);
+        nor[i] = n.x;
+        nor[i + 1] = n.y;
+        nor[i + 2] = n.z;
+      }
+    } else for (let i = 1; i < nor.length; i += 3) nor[i] = 1;
     g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     g.computeBoundingSphere();
     return g;
@@ -653,7 +721,7 @@ export class OsmCity {
 
   buildAreas(waters, greens) {
     const out = { water: [], grass: [], plaza: [], sidewalk: [] };
-    const tri = (acc, outer, holes) => {
+    const tri = (acc, outer, holes, y = 0) => {
       const contour = [];
       for (let i = 0; i < outer.length; i += 2) contour.push(new THREE.Vector2(outer[i], outer[i + 1]));
       const hv = holes.map((h) => {
@@ -671,12 +739,19 @@ export class OsmCity {
       for (const [a, b, c] of t) {
         const A = all[a], B = all[b], C = all[c];
         const cy = (C.x - A.x) * (B.y - A.y) - (B.x - A.x) * (C.y - A.y);
-        for (const P of cy > 0 ? [A, B, C] : [A, C, B]) acc.push(P.x, 0, P.y);
+        for (const P of cy > 0 ? [A, B, C] : [A, C, B]) acc.push(P.x, y, P.y);
       }
     };
     for (const [outer, holes] of waters) {
-      tri(out.water, outer, holes);
-      const w = { outer: Float32Array.from(outer), holes: holes.map((h) => Float32Array.from(h)), minx: Infinity, maxx: -Infinity, minz: Infinity, maxz: -Infinity };
+      // terrain: a lake is level; its surface is the middle height of its shore
+      let level = 0;
+      if (this.terrain) {
+        const hs = [];
+        for (let i = 0; i < outer.length; i += 2) hs.push(this.terrain.height(outer[i], outer[i + 1]));
+        level = hs.sort((a, b) => a - b)[hs.length >> 1];
+      }
+      tri(out.water, outer, holes, level);
+      const w = { outer: Float32Array.from(outer), holes: holes.map((h) => Float32Array.from(h)), level, minx: Infinity, maxx: -Infinity, minz: Infinity, maxz: -Infinity };
       for (let i = 0; i < outer.length; i += 2) {
         w.minx = Math.min(w.minx, outer[i]); w.maxx = Math.max(w.maxx, outer[i]);
         w.minz = Math.min(w.minz, outer[i + 1]); w.maxz = Math.max(w.maxz, outer[i + 1]);
@@ -693,7 +768,7 @@ export class OsmCity {
     }
     for (const [kind, outer, holes] of greens) {
       const target = kind === 'plaza' ? out.plaza : kind === 'sand' ? out.sidewalk : out.grass;
-      tri(target, outer, holes);
+      if (!this.terrain) tri(target, outer, holes); // terrain: with relief they are painted on the ground instead (Terrain.setMask)
       if (kind !== 'plaza') this.mmPut(outer[0], outer[1], 'g', Float32Array.from(outer));
     }
     const res = {};
@@ -712,20 +787,27 @@ export class OsmCity {
 
   buildTrees(t) {
     const n = t.length / 2;
+    const T = this.terrain;
     const trunk = new THREE.InstancedMesh(this.mats.trunkGeo, this.mats.trunk, n);
     const crown = new THREE.InstancedMesh(this.mats.crownGeo, this.mats.crown, n);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), col = new THREE.Color();
     const Y = new THREE.Vector3(0, 1, 0);
+    let k = 0;
     for (let i = 0; i < n; i++) {
       const x = t[i * 2], z = t[i * 2 + 1];
+      if (this.clearings && this.cleared(x, z)) continue; // terrain: trees keep off the BRASOV sign
+      // terrain: the trunk starts a little under the ground so it stands on a slope
+      const gy = T ? T.height(x, z) : 0, sink = T ? 0.4 : 0;
       const h = 6 + ((Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1 + 1) % 1 * 8;
       const r = 2 + (h - 6) * 0.3;
-      trunk.setMatrixAt(i, m4.compose(p.set(x, 0, z), q.identity(), s.set(1, h * 0.55, 1)));
+      trunk.setMatrixAt(k, m4.compose(p.set(x, gy - sink, z), q.identity(), s.set(1, h * 0.55 + sink, 1)));
       q.setFromAxisAngle(Y, (x * 0.37 + z * 0.11) % 6.28);
-      crown.setMatrixAt(i, m4.compose(p.set(x, h * 0.66, z), q, s.set(r * 2.1, r * 1.9, r * 2.1)));
-      const k = ((Math.sin(x * 3.1 + z * 7.7) * 9999) % 1 + 1) % 1;
-      crown.setColorAt(i, col.setHSL(0.02 * k - (k > 0.88 ? 0.07 : 0), 0.15 + 0.2 * k, 0.75 + 0.2 * k));
+      crown.setMatrixAt(k, m4.compose(p.set(x, gy + h * 0.66, z), q, s.set(r * 2.1, r * 1.9, r * 2.1)));
+      const c = ((Math.sin(x * 3.1 + z * 7.7) * 9999) % 1 + 1) % 1;
+      crown.setColorAt(k, col.setHSL(0.02 * c - (c > 0.88 ? 0.07 : 0), 0.15 + 0.2 * c, 0.75 + 0.2 * c));
+      k++;
     }
+    trunk.count = crown.count = k;
     trunk.castShadow = crown.castShadow = true;
     crown.receiveShadow = true;
     trunk.computeBoundingSphere();
@@ -733,10 +815,12 @@ export class OsmCity {
     return [trunk, crown];
   }
 
-  finish(facing) {
-    // Spawn: the tallest block within 900 m of the origin, on its edge facing the point of interest.
+  finish(facing, spawn) {
+    // Spawn: the tallest block within 900 m of the origin (or of `spawn`), on its edge facing the point of interest.
     const [fx, fz] = facing || [];
-    const r = this.roofNear(0, 0, 900, fx, fz);
+    const sx = spawn?.x ?? 0, sz = spawn?.z ?? 0;
+    // A city may have no tall block close by: look further out, then stand on the ground.
+    const r = this.roofNear(sx, sz, spawn?.r ?? 900, fx, fz) || this.roofNear(sx, sz, 3000, fx, fz) || { box: null, pos: new THREE.Vector3(sx, this.groundAt(sx, sz), sz), yaw: 0 };
     this.spawnBox = r.box;
     this.spawn = r.pos;
     this.spawnYaw = r.yaw;
@@ -749,9 +833,10 @@ export class OsmCity {
     for (const p of this.prisms) {
       const cx = (p.minx + p.maxx) / 2, cz = (p.minz + p.maxz) / 2;
       const d = Math.hypot(cx - x, cz - z);
-      if (p.kind === 'prop' || d > R || p.y0 > 0.5 || p.y1 < 12) continue;
+      const low = this.lowGround(p); // terrain: the ground the building stands on, not y = 0
+      if (p.kind === 'prop' || d > R || p.y0 > low + 0.5 || p.y1 - low < 12 || (this.terrain && p.pitched)) continue;
       if ((p.maxx - p.minx) * (p.maxz - p.minz) > 3000) continue;
-      const score = p.y1 - d * 0.03;
+      const score = p.y1 - low - d * 0.03;
       if (score > bestScore) (bestScore = score), (best = p);
     }
     if (!best) return null;
@@ -772,6 +857,7 @@ export class OsmCity {
   update(dt, time, camPos) {
     const at = this.focus || camPos;
     this.mats.ground.userData.city?.uCamXZ.value.set(at.x, at.z);
+    this.terrain?.tick(dt, at.x, at.z); // terrain:
     this.mats.water.userData.time && (this.mats.water.userData.time.value = time);
     // Build at most one fetched chunk per frame to keep frames smooth.
     const ready = this.building.findIndex((r) => r.state === 'fetched');
@@ -812,25 +898,74 @@ export class OsmCity {
     return out;
   }
 
-  // Terrain height in metres relative to the origin. Flat for now; the cities with relief will fill it in.
+  // Terrain height in metres relative to the origin: the bilinear sample of the dem, 0 on a flat city.
   groundAt(x, z) {
-    return 0;
+    return this.terrain ? this.terrain.height(x, z) : 0;
+  }
+
+  // Unit normal of the ground, straight up on a flat city.
+  groundNormalAt(x, z, out = new THREE.Vector3()) {
+    return this.terrain ? this.terrain.normal(x, z, out) : out.set(0, 1, 0);
+  }
+
+  // Rise over run of the ground under (x, z): 0.62 is a 32 degree slope.
+  slopeAt(x, z) {
+    return this.terrain ? this.terrain.slope(x, z) : 0;
+  }
+
+  // A solid that is not part of the streamed chunks (the BRASOV letters): it collides and takes webs like a building.
+  addSolid(outer, y0, y1, name) {
+    const o = Float32Array.from(outer);
+    const p = { outer: o, holes: [], signs: [Math.sign(ringArea(o)) || 1], y0, y1, minx: Infinity, maxx: -Infinity, minz: Infinity, maxz: -Infinity, kind: 'building', name, style: 3 };
+    for (let i = 0; i < o.length; i += 2) {
+      p.minx = Math.min(p.minx, o[i]);
+      p.maxx = Math.max(p.maxx, o[i]);
+      p.minz = Math.min(p.minz, o[i + 1]);
+      p.maxz = Math.max(p.maxz, o[i + 1]);
+    }
+    this.addPrism(p);
+    return p;
+  }
+
+  cleared(x, z) {
+    return this.clearings.some((f) => f(x, z));
+  }
+
+  // Lowest ground under a building, 0 on a flat city. A part held up above it (min_height) has y0 above this.
+  lowGround(p) {
+    if (!this.terrain) return 0;
+    if (p._lg === undefined) {
+      const o = p.outer;
+      let m = this.terrain.height((p.minx + p.maxx) / 2, (p.minz + p.maxz) / 2);
+      for (let i = 0; i < o.length; i += 2) m = Math.min(m, this.terrain.height(o[i], o[i + 1]));
+      p._lg = m;
+    }
+    return p._lg;
   }
 
   isWater(x, z) {
     const a = this.waterGrid.get(Math.floor(x / 64) * 100003 + Math.floor(z / 64));
     if (!a) return false;
-    for (const w of a) if (x > w.minx && x < w.maxx && z > w.minz && z < w.maxz && pointInRing(x, z, w.outer) && !w.holes.some((h) => pointInRing(x, z, h))) return true;
+    for (const w of a) {
+      if (!(x > w.minx && x < w.maxx && z > w.minz && z < w.maxz && pointInRing(x, z, w.outer) && !w.holes.some((h) => pointInRing(x, z, h)))) continue;
+      // terrain: where the ground stands above the surface of the lake it is bank, not water
+      if (this.terrain && this.terrain.height(x, z) > w.level + 0.6) continue;
+      return true;
+    }
     return false;
   }
 
   // Player cylinder against prisms. Sets grounded/contact on `st`.
   collide(p, v, r, H, wish, st) {
+    const wasOnGround = st.grounded && !st.groundBox;
     st.grounded = false;
     st.contact = null;
     st.groundBox = st.groundBox || null;
-    if (p.y <= 0 && !this.isWater(p.x, p.z)) {
-      p.y = 0;
+    // terrain: the ground is the dem; a runner keeps her feet on it going downhill instead of leaving it for a frame
+    const gy = this.groundAt(p.x, p.z);
+    const snap = this.terrain && wasOnGround && st.mode === 'ground' && v.y <= 0.5 ? 0.35 : 0;
+    if (p.y <= gy + snap && !this.isWater(p.x, p.z)) {
+      p.y = gy;
       if (v.y < 0) v.y = 0;
       st.grounded = true;
       st.groundBox = null;
@@ -875,7 +1010,7 @@ export class OsmCity {
     return _v.set(cp.nx, 0, cp.nz);
   }
 
-  raycast(o, d, maxDist, skipProps = false) {
+  raycast(o, d, maxDist, skipProps = false, skipGround = false) {
     const cand = [];
     const step = CELL * 0.5;
     const st = ++this.stamp;
@@ -929,7 +1064,11 @@ export class OsmCity {
         }
       }
     }
-    if (d.y < -1e-4) {
+    if (this.terrain) {
+      // terrain: the ground is a surface, not a plane. The camera boom skips it: on a slope the camera rises over it (CameraRig).
+      const t = skipGround ? -1 : this.terrain.rayHit(o, d, best ? best.t : maxDist);
+      if (t > 0) best = { t, normal: this.terrain.normal(o.x + d.x * t, o.z + d.z * t, new THREE.Vector3()), box: null };
+    } else if (d.y < -1e-4) {
       const t = -o.y / d.y;
       if (t > 0 && t <= maxDist && (!best || t < best.t)) best = { t, normal: new THREE.Vector3(0, 1, 0), box: null };
     }
@@ -959,7 +1098,7 @@ export class OsmCity {
         best = new THREE.Vector3(cx, cy, cz);
       }
     }
-    if (!best && p.y < 45) best = D;
+    if (!best && p.y - this.groundAt(p.x, p.z) < 45) best = D;
     return best;
   }
 }

@@ -106,6 +106,13 @@ export class Minimap {
     g.beginPath();
     for (const b of buckets) for (const p of b.w) this.poly(g, p);
     g.fill();
+    // terrain: the slopes, shaded from the north west, over the ground and water and under the streets
+    const T = this.city.terrain;
+    if (T) {
+      const m = T.meta;
+      g.imageSmoothingEnabled = true;
+      g.drawImage(T.hillshade(), m.x0 - m.step, m.z0 - m.step, Math.ceil(m.w / 2) * 2 * m.step, Math.ceil(m.h / 2) * 2 * m.step);
+    }
     g.lineCap = 'round';
     g.lineJoin = 'round';
     for (const major of [false, true]) {

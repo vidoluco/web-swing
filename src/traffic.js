@@ -17,6 +17,7 @@ const TYPES = [
   ['firetruck', 8.5, 1],
 ];
 const WHEEL_R = 0.34;
+const ROAD_LIFT = 0.03; // terrain: streets lie this far over the ground (osmcity LIFT)
 const _near = [];
 const _cp = {};
 
@@ -207,7 +208,7 @@ export class Traffic {
       this.spawnT = 0.05;
       this.trySpawn(px, pz);
     }
-    const onFoot = !driving && player.pos.y < 2.5;
+    const onFoot = !driving && player.pos.y - this.city.groundAt(px, pz) < 2.5;
     for (let i = this.cars.length - 1; i >= 0; i--) {
       const c = this.cars[i];
       if (c.mode !== 'traffic') continue;
@@ -224,7 +225,9 @@ export class Traffic {
         const g = look(px, pz, 0.4);
         if (g < gap) (gap = g), (blockedByPlayer = g < 12);
       }
-      const want = gap < 30 ? Math.min(c.cruise, Math.max(0, (gap - 2.5) * 0.8)) : c.cruise;
+      // terrain: traffic slows uphill and speeds up a little downhill
+      const cruise = c.grade ? c.cruise * clamp(1 - 0.9 * c.grade, 0.55, 1.2) : c.cruise;
+      const want = gap < 30 ? Math.min(cruise, Math.max(0, (gap - 2.5) * 0.8)) : cruise;
       c.speed += clamp(want - c.speed, -10 * dt, 3 * dt);
       if (blockedByPlayer && c.speed < 1) {
         c.wait += dt;
@@ -254,13 +257,34 @@ export class Traffic {
   }
 
   poseObj(c, dt = 0) {
-    c.obj.position.set(c.x, 0, c.z);
-    c.obj.rotation.y = c.yaw;
+    if (this.city.terrain) this.poseOnGround(c, dt);
+    else {
+      c.obj.position.set(c.x, 0, c.z);
+      c.obj.rotation.y = c.yaw;
+    }
     c.spin += (c.speed * dt) / WHEEL_R;
     for (const w of c.wheels) {
       w.o.rotation.x = c.spin;
       w.o.rotation.y = w.front ? -c.steer : 0;
     }
+  }
+
+  // terrain: the car rests on the ground under its four corners: it rides at their mean height,
+  // pitches with the slope along it and rolls with the slope across it.
+  poseOnGround(c, dt) {
+    const T = this.city.terrain;
+    const hx = Math.sin(c.yaw), hz = Math.cos(c.yaw), lx = Math.cos(c.yaw), lz = -Math.sin(c.yaw);
+    const a = c.len * 0.4, b = c.wid * 0.45;
+    const hF = T.height(c.x + hx * a, c.z + hz * a), hB = T.height(c.x - hx * a, c.z - hz * a);
+    const hL = T.height(c.x + lx * b, c.z + lz * b), hR = T.height(c.x - lx * b, c.z - lz * b);
+    c.grade = (hF - hB) / (2 * a);
+    const k = dt > 0 ? damp(12, dt) : 1;
+    c.pitch = (c.pitch || 0) + (-Math.atan(c.grade) - (c.pitch || 0)) * k;
+    c.roll = (c.roll || 0) + (Math.atan((hL - hR) / (2 * b)) - (c.roll || 0)) * k;
+    c.y = (hF + hB + hL + hR) / 4;
+    c.obj.rotation.order = 'YXZ';
+    c.obj.rotation.set(c.pitch, c.yaw, c.roll);
+    c.obj.position.set(c.x, c.y + ROAD_LIFT, c.z);
   }
 
   // ---------- the player's car ----------
@@ -269,7 +293,7 @@ export class Traffic {
     let best = null, bd = maxD;
     for (const c of this.cars) {
       const d = Math.hypot(c.x - pos.x, c.z - pos.z) - c.len * 0.3;
-      if (d < bd && pos.y < c.h + 2.5) (bd = d), (best = c);
+      if (d < bd && pos.y - (c.y || 0) < c.h + 2.5) (bd = d), (best = c);
     }
     return best;
   }
@@ -291,7 +315,11 @@ export class Traffic {
   // drunk the driver is. Returns 'sunk' if the car went into the water.
   drive(c, dt, inp, wobble, time) {
     const acc = inp.moveY;
-    if (acc > 0) c.speed += (c.speed < 0 ? 24 : 11 * Math.max(0.05, 1 - c.speed / 50)) * acc * dt;
+    // terrain: the engine has less to give uphill, and the slope pulls the car back or on
+    const gr = c.grade || 0;
+    const climb = gr > 0 && c.speed >= 0 ? Math.max(0.3, 1 - 1.2 * gr) : 1;
+    c.speed -= ((9.81 * gr) / Math.sqrt(1 + gr * gr)) * 0.6 * dt;
+    if (acc > 0) c.speed += (c.speed < 0 ? 24 : 11 * Math.max(0.05, 1 - c.speed / 50)) * acc * climb * dt;
     else if (acc < 0) c.speed -= (c.speed > 0 ? 24 : 7 * Math.max(0, 1 + c.speed / 12)) * -acc * dt;
     else c.speed -= Math.sign(c.speed) * Math.min(Math.abs(c.speed), (1.5 + 0.015 * c.speed * c.speed) * dt);
     if (inp.jump) c.speed -= Math.sign(c.speed) * Math.min(Math.abs(c.speed), 14 * dt);
@@ -311,7 +339,7 @@ export class Traffic {
     for (const off of [-(c.len / 2 - r), 0, c.len / 2 - r]) {
       const cx = c.x + hx * off, cz = c.z + hz * off;
       for (const b of this.city.nearby(cx, cz, r + 2, _near)) {
-        if (b.kind === 'prop' || b.y0 > 1.5) continue;
+        if (b.kind === 'prop' || b.y0 > (c.y || 0) + 1.5 || b.y1 < (c.y || 0) - 0.5) continue;
         const inside = pointInPrism2D(cx, cz, b);
         closestOnPrism(cx, cz, b, _cp);
         if (!inside && _cp.d >= r) continue;

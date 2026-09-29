@@ -53,14 +53,23 @@ export class CameraRig {
     const side = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw)).multiplyScalar(0.45);
     for (const k of [0, 1, -1]) {
       const o = this.target.clone().addScaledVector(side, k);
-      const hit = this.city.raycast(o, back, this.dist + 0.6, true);
+      const hit = this.city.raycast(o, back, this.dist + 0.6, true, true);
       if (hit) d = Math.min(d, Math.max(0.35, hit.t - 0.6));
     }
     const pos = this.cam.position.copy(this.target).addScaledVector(back, d);
     // A little offset to the right, over the shoulder.
     pos.x += Math.cos(this.yaw) * 0.6;
     pos.z += -Math.sin(this.yaw) * 0.6;
-    if (pos.y < 0.5) pos.y = 0.5;
+    const T = this.city.terrain;
+    if (T) {
+      // terrain: the camera rises over the hillside behind her, at its own spot and half way along the boom
+      let lift = T.height(pos.x, pos.z) + 0.6;
+      for (const t of [0.34, 0.67]) {
+        const gy = T.height(this.target.x + (pos.x - this.target.x) * t, this.target.z + (pos.z - this.target.z) * t) + 0.5;
+        lift = Math.max(lift, this.target.y + (gy - this.target.y) / t);
+      }
+      if (pos.y < lift) pos.y = lift;
+    } else if (pos.y < 0.5) pos.y = 0.5;
 
     this.shake = clamp((speed - 35) / 30, 0, 1);
     if (this.shake > 0) {
