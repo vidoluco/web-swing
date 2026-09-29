@@ -76,7 +76,7 @@ try {
     const keys = ['scene', 'camera', 'renderer', 'params', 'cityId', 'city', 'player', 'hero', 'traffic', 'drinks', 'drunk', 'voice', 'input', 'events', 'actors', 'hud', 'save', 'minimap', 'sfx', 'time', 'rng'];
     return {
       missing: keys.filter((k) => !(k in g)),
-      actors: g.actors,
+      hasActors: !!g.actors && typeof g.actors.spawn === 'function',
       cityId: g.cityId,
       cityCityId: g.city.cityId,
       origin: g.city.origin,
@@ -87,7 +87,7 @@ try {
     };
   });
   const rng7 = mulberry32(7);
-  check('game object carries the shared contract, actors is the null placeholder', r.missing.length === 0 && r.actors === null && r.cityId === 'bucharest', r);
+  check('game object carries the shared contract, including a working game.actors', r.missing.length === 0 && r.hasActors && r.cityId === 'bucharest', r);
   check('city knows its id and origin, groundAt is flat', r.cityCityId === 'bucharest' && Math.abs(r.origin.lat - 44.4268) < 1e-6 && r.ground.every((v) => v === 0), { id: r.cityCityId, origin: r.origin, ground: r.ground });
   check('rng is seeded (?seed=7 gives mulberry32(7))', JSON.stringify(r.rng) === JSON.stringify([rng7(), rng7(), rng7()]), r.rng);
   check('?city=bucharest skips the map selection and the city is remembered', r.mapselectHidden && r.lastCity === 'bucharest', { hidden: r.mapselectHidden, last: r.lastCity });
