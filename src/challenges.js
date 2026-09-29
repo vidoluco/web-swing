@@ -178,6 +178,8 @@ export function create(game) {
     init() {
       showStarts();
       loadCollect(key).then(initJars);
+      // A mission that ends on a race's start must not throw her into the race: wait until she has left.
+      events.on('mission:end', () => (armed = false));
     },
 
     update(dt) {

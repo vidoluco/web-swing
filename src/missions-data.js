@@ -58,8 +58,8 @@ export const MISSIONS = {
             text: 'Consegna i borcane di zacuscă',
             unit: 'borcane',
             r: 8,
-            // Poșta Română, Unirii View, Piața Unirii, Ateneul Român, Piața Victoriei.
-            points: [p(1194.2, -1909.2), p(563.1, -436.5), p(30, -95), p(-442, -1606), p(-1381, -2833)],
+            // Poșta Română, Unirii View, Piața Unirii, Ateneul Român, then the plaza short of Piața Victoriei (its race starts there).
+            points: [p(1194.2, -1909.2), p(563.1, -436.5), p(30, -95), p(-442, -1606), p(-1340, -2800)],
           },
         ],
       },
@@ -77,16 +77,16 @@ export const MISSIONS = {
             text: 'Sconfiggi la banda intorno a Matei',
             say: 'Bunica: "Lasciate stare il ragazzino, delinquenti!"',
             foes: [
-              { key: 'nephew', kind: 'civilian', variant: 'cap', at: p(-1269.2, -5145.2), scale: 0.7, hp: 60 },
-              { key: 'g1', kind: 'thug', variant: 'hood', at: p(-1264, -5150) },
-              { key: 'g2', kind: 'thug', variant: 'beanie', at: p(-1274, -5150) },
-              { key: 'g3', kind: 'thug', variant: 'hood', at: p(-1264, -5140) },
-              { key: 'g4', kind: 'thug', variant: 'beanie', at: p(-1274, -5140) },
-              { key: 'g5', kind: 'thug', variant: 'hood', at: p(-1269, -5153) },
+              { key: 'nephew', kind: 'civilian', variant: 'cap', at: p(-1269, -5145), scale: 0.7, hp: 60 },
+              { key: 'g1', kind: 'thug', variant: 'hood', at: p(-1263, -5140) },
+              { key: 'g2', kind: 'thug', variant: 'beanie', at: p(-1275, -5140) },
+              { key: 'g3', kind: 'thug', variant: 'hood', at: p(-1262, -5133) },
+              { key: 'g4', kind: 'thug', variant: 'beanie', at: p(-1276, -5133) },
+              { key: 'g5', kind: 'thug', variant: 'hood', at: p(-1269, -5130) },
             ],
             guard: 'nephew',
           },
-          { type: 'goto', at: p(-1269.2, -5145.2), r: 4, text: 'Abbraccia Matei', say: 'Matei: "Nonna, sei un’eroina!"' },
+          { type: 'goto', at: p(-1269, -5145), r: 4, text: 'Abbraccia Matei', say: 'Matei: "Nonna, sei un’eroina!"' },
         ],
       },
       {
@@ -198,7 +198,7 @@ export const MISSIONS = {
             text: 'Insegui il borseggiatore nella via più stretta e legalo (C)',
             foes: [{ key: 'pick', kind: 'thug', variant: 'beanie', at: p(12.2, 374.5), hp: 40 }],
             // Strada Sforii runs (14.9, 378.0), (12.2, 374.5), (-12.4, 344.3), then the lane on to (-30.0, 322.6).
-            flee: [{ ref: 'pick', route: [[-12.4, 344.3], [-30, 322.6], [-60, 300]], speed: 6.4, alert: Infinity }],
+            flee: [{ ref: 'pick', route: [[-12.4, 344.3], [-30, 322.6], [-52.9, 307.1]], speed: 6.4, alert: Infinity }],
           },
         ],
       },
