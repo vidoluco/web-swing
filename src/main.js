@@ -21,6 +21,7 @@ import { Save } from './save.js';
 import { Hud } from './hud.js';
 import { Systems } from './systems.js';
 import { showMapSelect, mapSelectQuery } from './mapselect.js';
+import { Actors } from './actors.js'; // actors:
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.has('demo');
@@ -179,6 +180,7 @@ if (params.has('cars')) traffic.max = +params.get('cars');
 const drinks = new Drinks(scene, city);
 const drunk = new Drunk();
 const voice = new Voice($('say'));
+const actors = await Actors.load('models/Xbot.glb', scene, city, { onMaterial: withCSM, max: LOWQ ? 60 : 120 }); // actors:
 for (const m of Object.values(traffic.models)) m.holder.traverse((o) => o.isMesh && withCSM(o.material));
 for (const m of Object.values(drinks.models)) m.traverse((o) => o.isMesh && withCSM(o.material));
 const player = new Player(city);
@@ -474,6 +476,7 @@ function tick(dt) {
     }
   }
   traffic.events.length = 0;
+  actors.update(dt, player); // actors:
   const drank = drinks.update(dt, player, !driving && player.mode !== 'swing' && player.mode !== 'zip');
   if (drank) {
     drunk.drink(drank);
@@ -584,7 +587,7 @@ const game = {
   voice,
   input,
   events,
-  actors: null, // PLACEHOLDER: the actors module (src/actors.js) creates game.actors here once it lands
+  actors, // actors:
   hud,
   save,
   minimap,
