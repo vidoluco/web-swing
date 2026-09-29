@@ -157,7 +157,7 @@ const num = (v) => {
   return m ? parseFloat(m[0]) : undefined;
 };
 
-// Lowest and highest terrain under a footprint: its vertices, points along the edges every 3 m, the
+// Lowest and highest terrain under a footprint: its vertices, points along the edges every metre, the
 // centroid and every terrain grid node inside (the bilinear surface has no other extremes).
 function footprintGround(b) {
   let lo = Infinity, hi = -Infinity;
@@ -170,7 +170,7 @@ function footprintGround(b) {
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (let i = 0; i < r.length; i++) {
     const [ax, az] = r[i], [bx, bz] = r[(i + 1) % r.length];
-    const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 3);
+    const n = Math.ceil(Math.hypot(bx - ax, bz - az));
     for (let k = 0; k < n; k++) put(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n);
     x0 = Math.min(x0, ax); x1 = Math.max(x1, ax); z0 = Math.min(z0, az); z1 = Math.max(z1, az);
   }
@@ -437,7 +437,7 @@ for (const b of buildings) {
   // With terrain the prism runs from the lowest ground under the footprint (plus min_height) to the
   // highest ground plus the height, so the walls always reach the ground.
   const [gLo, gHi] = dem ? footprintGround(b) : [0, 0];
-  chunkOf(b.c[0], b.c[1]).b.push([st.s, st.colour, Math.round((gLo + b.minH) * 10) / 10, dem ? Math.round((gHi + b.h) * 10) / 10 : b.h, st.roof, (bi++ * 7919) % 1000, flat(b.outer), b.holes.map(flat), b.t.name || '']);
+  chunkOf(b.c[0], b.c[1]).b.push([st.s, st.colour, dem ? Math.round((gLo + b.minH) * 100) / 100 : Math.round(b.minH * 10) / 10, dem ? Math.round((gHi + b.h) * 100) / 100 : b.h, st.roof, (bi++ * 7919) % 1000, flat(b.outer), b.holes.map(flat), b.t.name || '']);
 }
 // Lines are split per chunk by their first vertex; long lines are cut into pieces so culling works.
 function pushLine(list, item) {
@@ -591,4 +591,4 @@ for (const p of CITY.places || []) {
 writeFileSync(`${dir}/index.json`, JSON.stringify(index));
 console.log(`${pois.length} places to drink (${pois.filter((p) => p[2] === 0).length} bars)`);
 console.log(`${buildings.length} buildings (${estimated} heights estimated), ${roads.length} roads, ${waters.length} water, ${greens.length} green, ${trees.length} trees, ${chunks.size} chunks, ${(bytes / 1e6).toFixed(1)} MB`);
-console.log('tallest:', index.landmarks.slice(0, 12).map((l) => `${l.name} ${l.h}m`).join(' | '));
+if (landmarks.length) console.log('tallest:', landmarks.slice(0, 12).map((l) => `${l.name} ${l.h}m`).join(' | '));
