@@ -164,13 +164,14 @@ export class Drinks {
     it.x = poi.x + dx;
     it.z = poi.z + dz;
     it.obj.visible = true;
-    it.obj.position.set(it.x, 0, it.z);
+    it.y = this.city.groundAt(it.x, it.z); // terrain
+    it.obj.position.set(it.x, it.y, it.z);
     return it;
   }
 
   showSign(p) {
     const sp = sign(p.name, p.kind);
-    sp.position.set(p.x, 4.2, p.z);
+    sp.position.set(p.x, this.city.groundAt(p.x, p.z) + 4.2, p.z); // terrain
     sp.visible = true;
     if (sp.parent !== this.group) this.group.add(sp);
     this.shownSigns.add(sp);
@@ -210,7 +211,7 @@ export class Drinks {
       const m = it.obj.userData.model;
       m.rotation.y = this.time * 1.6 + it.x;
       m.position.y = 0.7 + Math.sin(this.time * 2.2 + it.z) * 0.12;
-      if (onFoot && !drank && Math.hypot(it.x - player.pos.x, it.z - player.pos.z) < 1.5 && Math.abs(player.pos.y - 1) < 2.2) {
+      if (onFoot && !drank && Math.hypot(it.x - player.pos.x, it.z - player.pos.z) < 1.5 && Math.abs(player.pos.y - it.y - 1) < 2.2) {
         drank = it.kind;
         if (it.kind === 'beer') it.poi.readyBeer = this.time + 75;
         else it.poi.readyTuica = this.time + 75;

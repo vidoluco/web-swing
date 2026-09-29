@@ -856,9 +856,14 @@ export class Actors {
     return { x: pos.x, z: pos.z };
   }
 
+  // Water for a walker: a lake or, where the city draws rivers as ribbons, a river that no bridge crosses. // terrain:
+  wet(x, z) {
+    return this.city.isWater(x, z) || !!this.city.isRiver?.(x, z);
+  }
+
   // True if a body of radius r at (x, z) would be in water or overlap a building footprint.
   blocked(x, z, r = 0.35) {
-    if (this.city.isWater(x, z)) return true;
+    if (this.wet(x, z)) return true;
     const gy = this.groundAt(x, z);
     for (const b of this.city.nearby(x, z, r + 1, _near)) {
       if (!this._solid(b, gy)) continue;
@@ -1406,7 +1411,7 @@ export class Actors {
     }
     // Water closes its cell and, on the first try, the cells touching it.
     const wet = [];
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (this.city.isWater(x0 + i + 0.5, z0 + j + 0.5)) wet.push(j * N + i);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (this.wet(x0 + i + 0.5, z0 + j + 0.5)) wet.push(j * N + i);
     for (const n of wet) {
       dil[n] = 1;
       if (tight) continue;
@@ -1518,7 +1523,7 @@ export class Actors {
     // The grid says a line is open; this checks it against the real outlines before trusting it.
     const rr = a.radius + (tight ? 0.12 : 0.3);
     const freeAt = (x, z) => {
-      if (this.city.isWater(x, z) || this.city.isWater(x + rr, z) || this.city.isWater(x - rr, z) || this.city.isWater(x, z + rr) || this.city.isWater(x, z - rr)) return false;
+      if (this.wet(x, z) || this.wet(x + rr, z) || this.wet(x - rr, z) || this.wet(x, z + rr) || this.wet(x, z - rr)) return false;
       for (const b of walls) {
         if (x < b.minx - rr || x > b.maxx + rr || z < b.minz - rr || z > b.maxz + rr) continue;
         if (pointInPrism2D(x, z, b) || closestOnPrism(x, z, b, _cp).d < rr) return false;
@@ -1590,7 +1595,7 @@ export class Actors {
       x = _cp.x + _cp.nx * (r + 0.005);
       z = _cp.z + _cp.nz * (r + 0.005);
     }
-    if (this.city.isWater(x, z)) {
+    if (this.wet(x, z)) {
       x = ox;
       z = oz;
       a.speed = 0;
@@ -1611,7 +1616,7 @@ export class Actors {
   }
 
   _blockedAt(a, x, z, r) {
-    if (this.city.isWater(x, z)) return true;
+    if (this.wet(x, z)) return true;
     for (const b of a.obst) {
       if (x < b.minx - r || x > b.maxx + r || z < b.minz - r || z > b.maxz + r) continue;
       if (pointInPrism2D(x, z, b) || closestOnPrism(x, z, b, _cp).d < r) return true;

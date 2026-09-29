@@ -7,6 +7,7 @@ const _w = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _near = [];
+const _n = new THREE.Vector3();
 
 // Modes: ground, air, swing (pendulum on a web), wall (crawl), zip (pulled to a point).
 export class Player {
@@ -42,6 +43,7 @@ export class Player {
     this.landTimer = 0;
     this.runPhase = 0;
     this.wallPhase = 0;
+    this.slide = 0; // terrain: how much of her grip the ground takes, 0 to 1
     this.swingTime = 0;
     this.webT = 0;
     this.webFade = 0;
@@ -132,6 +134,32 @@ export class Player {
     this.events.push('jump');
   }
 
+  // terrain: how much of the run speed is left on this ground, and a slide down rock too steep to stand on.
+  // Uphill costs speed, downhill gives a little back.
+  slopeRun(h) {
+    this.slide = 0;
+    if (!this.city.terrain) return 1;
+    const p = this.pos, n = this.city.groundNormalAt(p.x, p.z, _n);
+    const hl = Math.hypot(n.x, n.z);
+    if (hl < 1e-4) return 1;
+    // Downhill is the horizontal part of the normal; uphill grade in the direction she runs.
+    const grade = hl / n.y;
+    let f = 1;
+    const wl = this.wish.length();
+    if (wl > 0.01) {
+      const up = -(this.wish.x * n.x + this.wish.z * n.z) / (wl * hl) * grade;
+      f = up > 0 ? Math.max(0.35, 1 - 1.15 * up) : 1 + Math.min(0.22, -up * 0.35);
+    }
+    // Past about 40 degrees she cannot hold on: the ground carries her down.
+    const steep = (this.slide = clamp((0.766 - n.y) / 0.097, 0, 1));
+    if (steep > 0) {
+      f *= 1 - 0.7 * steep;
+      this.vel.x += (n.x / hl) * 14 * steep * h;
+      this.vel.z += (n.z / hl) * 14 * steep * h;
+    }
+    return f;
+  }
+
   startSwing() {
     const hs = Math.hypot(this.vel.x, this.vel.z);
     // Travel direction: where you are steering, else where you are going.
@@ -188,8 +216,8 @@ export class Player {
     const v = this.vel, p = this.pos;
     switch (this.mode) {
       case 'ground': {
-        const target = _w.copy(this.wish).multiplyScalar(PHYS.runSpeed);
-        const k = damp(this.wish.lengthSq() > 0.01 ? 10 : 14, h);
+        const target = _w.copy(this.wish).multiplyScalar(PHYS.runSpeed * this.slopeRun(h));
+        const k = damp((this.wish.lengthSq() > 0.01 ? 10 : 14) * (1 - 0.85 * this.slide), h); // terrain: no grip on rock this steep
         v.x += (target.x - v.x) * k;
         v.z += (target.z - v.z) * k;
         v.y -= g * h;
@@ -244,8 +272,9 @@ export class Player {
           if (vr > 0) v.addScaledVector(rel, -vr);
         }
         this.ropeLen = Math.max(8, this.ropeLen - 2.5 * h);
-        if (p.y < 1.2) {
-          p.y = 1.2;
+        const floor = this.city.groundAt(p.x, p.z) + 1.2; // terrain: 1.2 m over the ground under her
+        if (p.y < floor) {
+          p.y = floor;
           if (v.y < 0) v.y = 0;
           this.ropeLen = Math.min(this.ropeLen, p.distanceTo(this.anchor));
         }
@@ -295,8 +324,8 @@ export class Player {
           this.mode = 'air';
           this.wall = null;
           this.wallCooldown = 0.3;
-        } else if (p.y <= 0) {
-          p.y = 0;
+        } else if (p.y <= this.city.groundAt(p.x, p.z)) {
+          p.y = this.city.groundAt(p.x, p.z);
           this.mode = 'ground';
           this.wall = null;
           this.wallCooldown = 0.5;
@@ -365,7 +394,7 @@ export class Player {
 
   checkWater() {
     const p = this.pos;
-    if (p.y < -0.8 && this.city.isWater(p.x, p.z)) {
+    if (p.y < this.city.groundAt(p.x, p.z) - 0.8 && this.city.isWater(p.x, p.z)) {
       p.copy(this.lastSafe);
       this.vel.set(0, 0, 0);
       this.mode = 'ground';

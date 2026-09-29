@@ -68,6 +68,18 @@ The bump is the absolute second difference of the ground along a street, so 0.09
 
 The range in the Brasov box is -80.7 to +870.0 m, not the -30 to +430 of the town alone: the box (45.58 to 45.72 N, 25.50 to 25.68 E) also holds the Postavaru massif in the south (highest sample at x = -1560, z = 6075, 1461 m above sea level) and the plain in the north (lowest at 510 m). The Tampa summit is at +349, Poiana Brasov at +435, the buildings stand between -78.9 and +579.
 
+## Runtime: what the game does with the terrain
+
+`src/terrain.js` is created by `OsmCity` only when `index.dem` exists. Without it nothing below happens: `groundAt` is 0, the flat plane stays and every check stays as it was in Bucharest.
+
+- Queries: `city.groundAt(x, z)` is the bilinear sample above, `groundNormalAt(x, z, out)` and `slopeAt(x, z)` (rise over run) come from the same grid, so a position and the mesh under it never disagree. `test/terrain.mjs` compares all three with `dem.bin` read directly.
+- Mesh: tiles of 32 x 32 cells (480 m) that follow the chunk streaming ring. Within 650 m a cell is split in two (7.5 m), out to 2400 m the grid is used as it is (15 m), and one coarse mesh with one vertex in four covers the whole grid and runs 60 km past it, hiding the blocks under loaded tiles. Tiles hang a 10 m skirt so two resolutions leave no crack. Each quad is split on the diagonal that keeps the mesh at or below the bilinear ground, so a road laid 3 cm over `groundAt` is never under the mesh.
+- Colour: the ground is one shared material that reads a land-use mask per loaded chunk (192 x 192, wood, grass, plaza) rasterised from the chunk's `g` polygons, and `ground.png` beyond the ring. Forest floor, meadow and pavers come from that; rock takes over by slope (from about 30 degrees, full at 45), and the whole thing fades into the far colours between 1400 and 2100 m so tiles and far mesh meet without a line.
+- Draping: every street, sidewalk, rail and trail is cut into pieces of at most 6 m and each vertex is put at `groundAt + 0.03` (`LIFT`). A river is level across its width, at the height of its centre line, and drops along its length. A lake or pond is flat at the median height of its shore; ground inside its outline that is more than 0.6 m above that level counts as dry bank, so she is not dropped in the water on a hillside. A bridge (`bridge` in the line) keeps its own level and is not water for anyone underneath.
+- Buildings: the baked `y0` is the lowest ground under the footprint plus what the builder decided, and the walls reach 0.35 m below it, so a base on a slope shows no gap. The far boxes (`lod.bin`) sink 4 m for the same reason. Trees stand on the ground with the trunk 0.4 m in it; none are planted inside `city.clearings` (the meadow around the letters, which is also painted as grass through `city.extraGreens`).
+- Player: `slopeAt` under her feet scales the run (uphill `1 - 1.15 * grade`, at least 0.35; downhill up to 22% faster), and above about 40 degrees the ground gives no grip and she slides down the fall line. Swing anchors, water and the wall crawl are measured from the ground under her, not from y = 0. Cars take the ground at four corners for pitch and roll, and gravity and throttle follow the grade.
+- Sign: `src/hillsign.js` builds the letters of `CITIES[id].sign` as extruded polygons (25 m tall, 3.4 m deep) and registers them as vertical solids of 1 m columns, so she can stand on them, climb their front and swing from them like from a building.
+
 ## Rebuilding a city end to end
 
 Needs `osmium` (Homebrew `osmium-tool`) and Node (tested with 24) with `npm install` done (the `geotiff` package is a dev dependency). `data/` is git ignored; everything below writes there except the last step.

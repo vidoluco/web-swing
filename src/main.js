@@ -35,13 +35,14 @@ if (!params.has('city') && !DEMO && !SHOT) {
 }
 const cityId = params.get('city') || 'bucharest';
 const cfg = CITIES[cityId];
+const ATM = cfg?.atmosphere || {}; // terrain: the air of a city (cities.js), Bucharest keeps the defaults below
 const TUNE = {
   exp: +(params.get('exp') || 1.0),
   tm: params.get('tm') || 'aces',
-  sun: +(params.get('sun') || 3.2),
+  sun: +(params.get('sun') || ATM.sun || 3.2),
   env: +(params.get('env') || 0.3),
-  fogNear: +(params.get('fogn') || 1200),
-  fogFar: +(params.get('fogf') || 6500),
+  fogNear: +(params.get('fogn') || ATM.fogNear || 1200),
+  fogFar: +(params.get('fogf') || ATM.fogFar || 6500),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -68,7 +69,7 @@ renderer.toneMappingExposure = TUNE.exp;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xb9c7d3, TUNE.fogNear, TUNE.fogFar);
+scene.fog = new THREE.Fog(ATM.fogColor ?? 0xb9c7d3, TUNE.fogNear, TUNE.fogFar);
 const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.3, 30000);
 
 // Late September afternoon in Bucharest: sun in the south-west, about 35 degrees up.
@@ -76,8 +77,8 @@ const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.deg
 const sky = new Sky();
 sky.scale.setScalar(20000);
 const su = sky.material.uniforms;
-su.turbidity.value = 3.5;
-su.rayleigh.value = 1.2;
+su.turbidity.value = ATM.turbidity ?? 3.5;
+su.rayleigh.value = ATM.rayleigh ?? 1.2;
 su.mieCoefficient.value = 0.004;
 su.mieDirectionalG.value = 0.82;
 su.sunPosition.value.copy(sunDir);
@@ -98,7 +99,7 @@ if (su.showSunDisc) su.showSunDisc.value = 1;
 scene.add(sky);
 scene.environment = envMap;
 scene.environmentIntensity = TUNE.env;
-scene.add(new THREE.HemisphereLight(0xd6e6ff, 0x6a655a, 0.25));
+scene.add(new THREE.HemisphereLight(ATM.skyLight ?? 0xd6e6ff, 0x6a655a, 0.25));
 
 const csm = new CSM({
   maxFar: LOWQ ? 500 : 1100,
@@ -108,7 +109,7 @@ const csm = new CSM({
   shadowMapSize: LOWQ ? 1024 : 2048,
   lightDirection: sunDir.clone().negate(),
   lightIntensity: TUNE.sun,
-  lightColor: new THREE.Color(0xfff0da),
+  lightColor: new THREE.Color(ATM.sunColor ?? 0xfff0da),
   camera,
 });
 csm.fade = true;
@@ -158,7 +159,7 @@ composer.addPass(new EffectPass(camera, new SMAAEffect()));
 setLoading('Carico le texture…');
 const textures = loadTextures('textures');
 setLoading(`Ricostruisco ${cfg.label}…`);
-const city = await OsmCity.load(`city/${cityId}`, scene, envMap, textures, (p) => setLoading(`Ricostruisco ${cfg.label}… ${Math.round(p * 100)}%`), cfg.spawnFacing).catch(async (e) => {
+const city = await OsmCity.load(`city/${cityId}`, scene, envMap, textures, (p) => setLoading(`Ricostruisco ${cfg.label}… ${Math.round(p * 100)}%`), cfg.spawnFacing, { sign: cfg.sign, spawn: cfg.spawn, trees: cfg.trees }).catch(async (e) => {
   console.error(e);
   await stopWith(`Mappa non disponibile: ${cfg.label}`);
 });
@@ -228,11 +229,11 @@ function exitCar(leap) {
   player.groundBox = null;
   if (leap) {
     player.mode = 'air';
-    player.pos.set(c.x, c.h + 0.4, c.z);
+    player.pos.set(c.x, (c.y || 0) + c.h + 0.4, c.z);
     player.vel.set(c.vx, 11, c.vz);
   } else {
     player.mode = 'ground';
-    player.pos.set(c.x + lx * (c.wid / 2 + 0.7), 0, c.z + lz * (c.wid / 2 + 0.7));
+    player.pos.set(c.x + lx * (c.wid / 2 + 0.7), city.groundAt(c.x + lx * (c.wid / 2 + 0.7), c.z + lz * (c.wid / 2 + 0.7)), c.z + lz * (c.wid / 2 + 0.7));
     player.vel.set(0, 0, 0);
   }
   player.facing.set(Math.sin(c.yaw), 0, Math.cos(c.yaw));
@@ -260,18 +261,22 @@ function placeOnRoof(box, pos, yaw) {
 let travelling = false;
 async function goTo(i) {
   if (!cfg.spots[i]) return;
-  const [name, x, z] = cfg.spots[i];
+  const [name, x, z, opt] = cfg.spots[i]; // terrain: opt { ground, face } starts on the ground, looking that way
   dropCar();
   travelling = true;
   hud.toast(name + '…');
   city.focus = { x, z };
   await city.streamAround(x, z, 900);
-  const r = city.roofNear(x, z, 500);
+  const r = opt?.ground ? null : city.roofNear(x, z, opt?.r ?? 500);
   if (r) placeOnRoof(r.box, r.pos, r.yaw);
   else {
     player.reset();
-    player.pos.set(x, 0, z);
+    player.pos.set(x, city.groundAt(x, z), z);
     player.groundBox = null;
+    if (opt?.face) {
+      rig.yaw = Math.atan2(-opt.face[0], -opt.face[1]);
+      player.facing.set(opt.face[0], 0, opt.face[1]);
+    }
   }
   player.idleTime = 2;
   rig.pitch = -0.2;
@@ -342,7 +347,7 @@ function applyShot(name) {
     rig.dist = 10;
   } else if (name === 'street') {
     player.reset();
-    player.pos.set(-300, 0, 12);
+    player.pos.set(-300, city.groundAt(-300, 12), 12);
     player.groundBox = null;
     rig.yaw = Math.PI / 2;
     rig.pitch = 0.1;
@@ -449,10 +454,10 @@ function tick(dt) {
       sfx.play('splash');
       voice.say('sunk', drunk.amount);
     } else {
-      player.pos.set(c.x, 0, c.z);
+      player.pos.set(c.x, c.y || 0, c.z);
       player.vel.set(c.vx, 0, c.vz);
-      player.lastSafe.set(c.x, 0, c.z);
-      carProxy.pos.set(c.x, 0.3, c.z);
+      player.lastSafe.set(c.x, c.y || 0, c.z);
+      carProxy.pos.set(c.x, (c.y || 0) + 0.3, c.z);
       carProxy.vel.set(c.speed > 0 ? c.vx : 0, 0, c.speed > 0 ? c.vz : 0);
       rig.update(dt, carProxy, mouse, true);
     }
@@ -538,7 +543,7 @@ let aerial = null;
 function render() {
   if (aerial) {
     camera.position.set(aerial[0], aerial[1], aerial[2]);
-    camera.lookAt(aerial[3], 0, aerial[4]);
+    camera.lookAt(aerial[3], aerial[5] ?? 0, aerial[4]); // terrain: the target may be on a hill
     camera.updateMatrixWorld();
   }
   if (params.has('nopost')) {
@@ -568,7 +573,7 @@ function frame(now) {
 function updateHud() {
   const kmh = Math.round(player.speed * 3.6);
   const booze = drunk.beers + drunk.tuicas ? ` · 🍺 ${drunk.beers} · 🥃 ${drunk.tuicas} · ${'●'.repeat(Math.ceil(drunk.level))}${'○'.repeat(8 - Math.ceil(drunk.level))}` : '';
-  $('hud').textContent = `${kmh} km/h · ${Math.round(player.pos.y)} m${booze}${params.has('fps') ? ` · ${Math.round(fps)} fps` : ''}`;
+  $('hud').textContent = `${kmh} km/h · ${Math.round(player.pos.y + (city.terrain?.base || 0))} m${booze}${params.has('fps') ? ` · ${Math.round(fps)} fps` : ''}`;
 }
 
 // The shared game object, also reachable as window.__game with the hooks for automated checks.
@@ -642,8 +647,8 @@ const game = {
   shot: applyShot,
   goTo,
   // Test view from above: fixed camera looking at (tx, 0, tz), with the fog pushed back.
-  aerial(x, y, z, tx, tz) {
-    aerial = [x, y, z, tx, tz];
+  aerial(x, y, z, tx, tz, ty) {
+    aerial = [x, y, z, tx, tz, ty];
     scene.fog.near = 3000;
     scene.fog.far = 26000;
     camera.far = 40000;
