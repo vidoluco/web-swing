@@ -455,7 +455,7 @@ export function create(game) {
   function carHits() {
     const cars = game.traffic.cars, pl = game.player;
     for (const c of cars) {
-      if (Math.abs(c.speed) < 2.5 || c.mode === 'parked') continue;
+      if (Math.abs(c.speed) < 2.5) continue;
       if ((c.x - pl.pos.x) ** 2 + (c.z - pl.pos.z) ** 2 > 130 * 130) continue;
       const hx = Math.sin(c.yaw), hz = Math.cos(c.yaw), reach = c.len / 2 + 1.5;
       for (const p of peds) {

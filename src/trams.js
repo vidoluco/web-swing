@@ -635,5 +635,5 @@ export function create(game) {
     scene.removeFromParent();
   }
 
-  return { name: 'trams', init, onCityChange, update, dispose, trams, stats, spawnOn, network: () => net, pointAt, stopsOf, ride: () => riding };
+  return { name: 'trams', init, onCityChange, update, dispose, trams, stats, spawnOn, limit: (n) => (cap = n), network: () => net, pointAt, stopsOf, ride: () => riding };
 }
