@@ -97,6 +97,20 @@ function obb(r) {
   return { len: x1 - x0, wid: z1 - z0, ang, x0, x1, z0, z1, c, s };
 }
 
+// Buildings that OSM knows only as a footprint but that the game has to show as what they are. Matched by the
+// centre of the footprint; bits go into the variant (4096 palace, 8192 blackened stone, 16384 white tower).
+const MARKS = {
+  bucharest: [
+    { x: -1190, z: -70, r: 140, minArea: 3000, kind: KIND.MONUMENT, colour: '#e6dcc4', bits: 4096 }, // Palace of the Parliament
+    { x: -1148, z: -67, r: 60, minArea: 2000, kind: KIND.MONUMENT, colour: '#e6dcc4', bits: 4096 },
+  ],
+  brasov: [
+    { x: -42, z: 187, r: 45, minArea: 300, kind: KIND.MONUMENT, colour: '#5b5854', bits: 8192 }, // Black Church
+    { x: -173, z: -18, r: 25, minArea: 20, kind: KIND.MONUMENT, colour: '#ebe6da', bits: 16384 }, // White Tower
+    { x: 20, z: 641, r: 30, minArea: 60, kind: KIND.MONUMENT, colour: '#c9bfa8', bits: 0 }, // Weavers' Bastion
+  ],
+};
+
 // Picks the architectural kind, wall colour and the variant bits from the OSM style and shape.
 export function classify(ctx, s, hex, h, sd, outer, name, rf) {
   const o = obb(outer);
@@ -118,6 +132,15 @@ export function classify(ctx, s, hex, h, sd, outer, name, rf) {
   else if (h > 9) kind = r(2) < 0.7 ? KIND.INTERWAR : KIND.BELLE;
   else kind = KIND.HOUSE;
   if (ctx.brasov && kind === KIND.GLASS && h < 30) kind = KIND.BAROQUE;
+  let bits = 0;
+  for (const m of ctx.marks || []) {
+    if (Math.hypot(cx - m.x, cz - m.z) < m.r && area >= m.minArea) {
+      kind = m.kind;
+      colour = m.colour;
+      bits = m.bits;
+      break;
+    }
+  }
   // variant bits: 0 renovated, 1-3 main colour index, 4-7 accent, 8-9 balcony glazing, 10-11 spare
   let variant = 0;
   const ci = Math.floor(r(3) * 8), acc = Math.floor(r(4) * 16), bal = Math.floor(r(5) * 4);
@@ -135,6 +158,7 @@ export function classify(ctx, s, hex, h, sd, outer, name, rf) {
     colour = INTERWAR[Math.floor(r(9) * INTERWAR.length)];
     variant = (ci << 1) | (acc << 4) | (bal << 8);
   } else variant = (ci << 1) | (acc << 4) | (bal << 8);
+  variant |= bits;
   return { kind, colour, variant, o, area, pitched: kind === KIND.BAROQUE ? h < 30 : kind === KIND.HOUSE ? !!rf || r(10) < 0.7 : !!rf };
 }
 
@@ -144,7 +168,7 @@ export function buildBuildingGeometry(city, list) {
   const props = [];
   const detail = { walls: [], roofs: [], flat: [] };
   const color = new THREE.Color();
-  const ctx = { brasov: !!city.brasov };
+  const ctx = { brasov: !!city.brasov, marks: MARKS[city.cityId] };
   const groundAt = city.groundAt ? (x, z) => city.groundAt(x, z) : () => 0;
   let vcount = 0;
 
@@ -180,6 +204,7 @@ export function buildBuildingGeometry(city, list) {
 
     const H = y1 - y0;
     const cl = classify(ctx, s, hex, H, sd, outer, name, rf);
+    prism.look = cl.kind;
     color.set(cl.colour);
     // Lowest ground under the footprint corners: decides if the walls need a skirt and if this stands on the ground.
     let lowG = Infinity;

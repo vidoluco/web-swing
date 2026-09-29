@@ -139,14 +139,15 @@ export async function loadAssets(base = '') {
   const b = base ? base + '/' : '';
   const t0 = performance.now();
   const loader = new GLTFLoader();
-  const [wall, ground, leaf, cars, ...models] = await Promise.all([
+  const [wall, ground, leaf, bark, cars, ...models] = await Promise.all([
     packGroup(`${b}textures/pbr`, WALL).catch(() => dummyGroup(WALL)),
     packGroup(`${b}textures/pbr`, GROUND).catch(() => dummyGroup(GROUND)),
     loadLeaf(`${b}textures/pbr/leaf.png`),
+    loadLeaf(`${b}textures/pbr/bark_a_c.jpg`),
     Promise.all(CARS.map((c) => loadCar(loader, `${b}models/cars`, c))),
     ...MODELS.map((m) => loadModel(loader, `${b}models/props`, m)),
   ]);
-  const assets = { wall, ground, leaf, cars: cars.filter(Boolean), models: Object.fromEntries(MODELS.map((m, i) => [m, models[i]])), ms: Math.round(performance.now() - t0) };
+  const assets = { wall, ground, leaf, bark, cars: cars.filter(Boolean), models: Object.fromEntries(MODELS.map((m, i) => [m, models[i]])), ms: Math.round(performance.now() - t0) };
   const missing = [...(wall?.missing || []), ...(ground?.missing || []), ...MODELS.filter((m) => !assets.models[m])];
   if (missing.length) console.warn('assets: missing', missing.join(', '));
   return assets;

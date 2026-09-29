@@ -14,7 +14,7 @@ const ROWS = 5; // 0 green, 1 gold, 2 red-orange, 3 conifer, 4 bark
 let seedv = 1;
 const rand = () => ((seedv = (seedv * 16807) % 2147483647) / 2147483647);
 
-function makeAtlas(leaf) {
+function makeAtlas(leaf, bark) {
   const c = document.createElement('canvas');
   c.width = CELL * COLS;
   c.height = CELL * ROWS;
@@ -115,9 +115,16 @@ function makeAtlas(leaf) {
     }
     g.restore();
   }
-  // Bark tile
-  g.fillStyle = '#5b4a3a';
+  // Bark tile: the photographic bark, lightened a little so trunks do not turn black in the shade
+  g.fillStyle = '#7d6a58';
   g.fillRect(0, 4 * CELL, CELL, CELL);
+  if (bark) {
+    g.filter = 'saturate(0.3) brightness(1.15)';
+    g.drawImage(bark, 0, 4 * CELL, CELL, CELL);
+    g.filter = 'none';
+    g.fillStyle = 'rgba(130,110,90,0.28)';
+    g.fillRect(0, 4 * CELL, CELL, CELL);
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
@@ -295,7 +302,7 @@ function shrub(near) {
 export class Trees {
   constructor(city, assets) {
     this.city = city;
-    const atlas = makeAtlas(assets.leaf);
+    const atlas = makeAtlas(assets.leaf, assets.bark);
     this.atlas = atlas;
     this.time = { value: 0 };
     this.geos = { broad: broadleaf(true), conifer: conifer(true), shrub: shrub(true) };
@@ -336,7 +343,18 @@ varying float vPart;`
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying float vPart;')
         .replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', '').replace('tbn[0] *= faceDirection;', '').replace('tbn[1] *= faceDirection;', ''))
-        .replace('#include <alphatest_fragment>', 'if (vPart > 0.5) diffuseColor.a = 1.0;\n#include <alphatest_fragment>');
+        .replace('#include <alphatest_fragment>', 'if (vPart > 0.5) diffuseColor.a = 1.0;\n#include <alphatest_fragment>')
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#include <emissivemap_fragment>
+#if NUM_DIR_LIGHTS > 0
+  if (vPart < 0.5) {
+    // leaves glow when the sun is behind them
+    float bt = pow(clamp(dot(-normalize(vViewPosition), directionalLights[0].direction), 0.0, 1.0), 2.5);
+    totalEmissiveRadiance += diffuseColor.rgb * directionalLights[0].color * bt * 0.5;
+  }
+#endif`
+        );
     };
     mat.customProgramCacheKey = () => 'trees-v1';
     this.mat = mat;
@@ -380,7 +398,7 @@ varying float vPart;`
           else (sx = 0.6 + r3 * 0.2), (sy = 0.6 + r3 * 0.2);
           // colour: mostly green with gold and red in late September
           const c = ((hh >> 12) & 255) / 255;
-          pal[i] = sp === 3 ? (c < 0.55 ? 2 : c < 0.8 ? 1 : 0) : sp === 2 ? (c < 0.5 ? 1 : 0) : c < 0.55 ? 0 : c < 0.9 ? 1 : 2;
+          pal[i] = sp === 3 ? (c < 0.4 ? 2 : c < 0.7 ? 1 : 0) : sp === 2 ? (c < 0.5 ? 1 : 0) : c < 0.62 ? 0 : c < 0.9 ? 1 : 2;
           bright[i] = 0.9 + r1 * 0.3;
         } else if (kind === 'conifer') {
           sx = 0.75 + r3 * 0.5; sy = 0.8 + r2 * 0.5;

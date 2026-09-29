@@ -12,6 +12,7 @@ export const VIEWS = {
   oldtown: { city: 'bucharest', pos: [-300, 0, -520], at: [-330, -560], pitch: 0.1, dist: 6 },
   bar: { city: 'bucharest', pos: [-226, 0, -521], at: [-213, -518], pitch: 0.16, dist: 5 },
   kiosk: { city: 'bucharest', pos: [-197, 0, -410], at: [-204, -423], pitch: 0.16, dist: 5 },
+  palace: { city: 'bucharest', pos: [-1010, 0, -62], at: [-1190, -70], pitch: 0.2, dist: 10 },
   swing: { city: 'bucharest', swing: true },
   roof: { city: 'bucharest', roof: true },
   brasov: { city: 'brasov', pos: [30.9, null, 60.1], at: [327, 943], pitch: 0.05, dist: 6 },

@@ -180,6 +180,7 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
   float dist = length(vWPos - cameraPosition);
   float px = max(fwidth(u), fwidth(y)) + 1e-4;
   bool renov = (variant & 1) == 1;
+  bool palace = (variant & 4096) != 0, blackened = (variant & 8192) != 0, whiteTower = (variant & 16384) != 0;
   int accI = (variant >> 4) & 15;
   int balcStyle = (variant >> 8) & 3;
   float eh = hash11(edge * 0.371 + seed);
@@ -187,6 +188,7 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
   // ---- layout per kind ----
   float cwT, fhT, gf;
   kindParams(ki, cwT, fhT, gf);
+  if (palace) { cwT = 5.6; fhT = 6.6; gf = 9.0; }
   float wallLayer = 0.0, wallScale = 3.0;
   if (ki == 0) wallLayer = 6.0;
   else if (ki == 1) { wallLayer = 3.0 + floor(hash11(seed) * 2.0); wallScale = 1.8; }
@@ -272,6 +274,25 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
       col3 *= 1.0 - 0.28 * joint;
     }
   }
+  if (palace) {
+    // colossal pilasters with capitals between the bays, a balustrade under the cornice and a stepped plinth
+    float pw = 0.7;
+    float pil = max(bandAA(cp.x, -pw, pw, px), bandAA(cp.x, cw - pw, cw + pw, px));
+    col3 = mix(col3, base * 1.12, pil * 0.9);
+    shadeDown *= 1.0 - 0.32 * bandAA(cp.x, pw, pw + 0.5, px * 2.0) - 0.32 * bandAA(cp.x, cw - pw - 0.5, cw - pw, px * 2.0);
+    float cap = bandAA(fy, 0.84, 0.94, px / fhh) * pil;
+    col3 = mix(col3, base * 1.3, cap);
+    float bal = bandAA(fract(u / 0.3), 0.25, 0.75, px / 0.3) * bandAA(ly, H - 2.6, H - 1.5, px);
+    col3 = mix(col3, base * 1.2, bal * 0.9);
+    col3 *= mix(0.78, 1.0, smoothstep(0.0, 2.5, ly));
+    metal = 0.0; rough = 0.55;
+  }
+  if (blackened) {
+    // soot black stone with light dressed edges
+    col3 = mix(col3, base * 0.8, 0.5);
+    col3 = mix(col3, vec3(0.26, 0.25, 0.24), 0.35 * smoothstep(0.45, 0.8, fbm(vec2(u, y) * 0.7)));
+  }
+  if (whiteTower) { col3 = base * 1.1; }
   // corner piers: the outer bays of a wall are solid on decorated kinds
   int ei = int(edge + 0.5);
   bool pier = (ki == 5 || ki == 8 || ki == 6 || ki == 7 || ki == 2 || ki == 1) && nc > 2.5 && (col < 0.5 || col > nc - 1.5);
