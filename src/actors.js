@@ -921,6 +921,7 @@ export class Actors {
       this._think(a, h);
       if (a.removed) continue;
       this._animate(a, h);
+      a.hook?.(a, h); // combat: strike poses on top of the clips
       this._pose(a);
     }
   }

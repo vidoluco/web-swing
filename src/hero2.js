@@ -1,128 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { spiderEmblemTexture } from './textures.js';
+import { SCARFS, bunicaMaterial, propsMaterial, buildProps, papucMesh } from './bunica.js';
 import { damp, clamp } from './config.js';
 
-// Skinned hero on the Mixamo X Bot rig. The suit is painted by a shader in bind-pose
-// space, so red and blue panels, web lines, eyes and emblem stay glued to the body while
-// the skeleton moves. Ground motion comes from the idle/walk/run clips; air poses are
-// solved by aiming bones at target directions and blended on top.
-
-const SUIT_GLSL = /* glsl */ `
-uniform float uBlack;
-uniform sampler2D uEmblem;
-uniform sampler2D uEmblemBig;
-varying vec3 vBind;
-float gRough = 0.5;
-float gSheen = 0.0;
-float lineAA(float f, float w) {
-  float d = min(f, 1.0 - f);
-  float fw = fwidth(f) + 1e-5;
-  return 1.0 - smoothstep(w - fw, w + fw, d);
-}
-vec3 suitColor(vec3 p, out float web, out float rough) {
-  float x = p.x, y = p.y, z = p.z;
-  float ax = abs(x);
-  web = 0.0;
-  rough = 0.55;
-  // Panels in the T-pose: arms run along x at shoulder height.
-  bool arm = ax > 0.2 && y > 1.28 && y < 1.6;
-  bool head = !arm && y > 1.49;
-  bool leg = y < 0.93;
-  bool boot = y < 0.47;
-  bool forearm = arm && ax > 0.46;
-  bool chest = !arm && !leg && !head && (y > 1.17 || ax < 0.075);
-  bool belt = !arm && y > 0.93 && y < 0.99;
-  bool red = head || forearm || chest || boot || belt || (leg && ax < 0.045);
-  vec3 redCol = vec3(0.58, 0.035, 0.05);
-  vec3 blueCol = vec3(0.04, 0.12, 0.42);
-  vec3 col = red ? redCol : blueCol;
-  // Web lines over the red panels.
-  if (red) {
-    if (head) {
-      vec2 q = vec2(x, y - 1.625);
-      float ang = atan(q.y, q.x) / 6.2831853 * 20.0;
-      float rad = length(q) / 0.028;
-      web = max(lineAA(fract(ang), 0.05), lineAA(fract(rad + 0.15 * sin(ang * 3.14159)), 0.06));
-    } else if (forearm) {
-      float ang = atan(y - 1.43, z) / 6.2831853 * 10.0;
-      web = max(lineAA(fract(ang), 0.05), lineAA(fract(ax / 0.045 + 0.2 * sin(fract(ang) * 3.14159)), 0.06));
-    } else {
-      float ang = atan(x, z) / 6.2831853 * 18.0;
-      float sag = 0.22 * sin(fract(ang) * 3.14159);
-      web = max(lineAA(fract(ang), 0.045), lineAA(fract(y / 0.05 + sag), 0.055));
-    }
-  }
-  col = mix(col, vec3(0.015), web * 0.85);
-  // Big lenses with black rims.
-  if (head && z > 0.02) {
-    for (int i = 0; i < 2; i++) {
-      float s = i == 0 ? 1.0 : -1.0;
-      vec2 c = vec2(0.043 * s, 1.652);
-      vec2 d = vec2(x, y) - c;
-      float a = -0.45 * s;
-      d = vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a));
-      float e = (d.x * d.x) / (0.033 * 0.033) + (d.y * d.y) / (0.019 * 0.019);
-      if (e < 1.5) col = vec3(0.01);
-      if (e < 1.0) { col = vec3(0.92, 0.95, 0.97); rough = 0.15; web = 0.0; }
-    }
-  }
-  return col;
-}
-`;
-
-function suitMaterial(emblem, emblemBig) {
-  const mat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.55, sheen: 0.6, sheenRoughness: 0.5, sheenColor: new THREE.Color(0.6, 0.25, 0.25) });
-  mat.userData.uniforms = { uBlack: { value: 0 }, uEmblem: { value: emblem }, uEmblemBig: { value: emblemBig } };
-  mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, mat.userData.uniforms);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBind;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBind = position;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + SUIT_GLSL)
-      .replace(
-        '#include <color_fragment>',
-        /* glsl */ `#include <color_fragment>
-{
-  float web, rough;
-  vec3 c = suitColor(vBind, web, rough);
-  vec3 p = vBind;
-  if (uBlack > 0.5) {
-    c = mix(vec3(0.012, 0.012, 0.016), vec3(0.06, 0.06, 0.07), web);
-    rough = mix(0.22, 0.4, web);
-    if (p.y > 1.49 && p.z > 0.02 && c.r < 0.5) {
-      // keep the lenses from the classic pass
-      float w2, r2; vec3 cl = suitColor(p, w2, r2);
-      if (cl.r > 0.5) { c = cl; rough = 0.15; }
-    }
-    vec2 uv = vec2((p.x + 0.2) / 0.4, (p.y - 1.05) / 0.44);
-    if (abs(p.x) < 0.2 && p.y > 1.05 && p.y < 1.49 && abs(p.z) > 0.03) {
-      vec4 e = texture2D(uEmblemBig, vec2(p.z > 0.0 ? uv.x : 1.0 - uv.x, uv.y));
-      c = mix(c, vec3(0.93), e.a);
-      rough = mix(rough, 0.35, e.a);
-    }
-  } else if (p.z > 0.06 && abs(p.x) < 0.09 && p.y > 1.22 && p.y < 1.42) {
-    vec4 e = texture2D(uEmblem, vec2((p.x + 0.09) / 0.18, (p.y - 1.22) / 0.2));
-    c = mix(c, vec3(0.01), e.a);
-  } else if (p.z < -0.05 && abs(p.x) < 0.13 && p.y > 1.12 && p.y < 1.42) {
-    vec4 e = texture2D(uEmblem, vec2(1.0 - (p.x + 0.13) / 0.26, (p.y - 1.12) / 0.3));
-    c = mix(c, vec3(0.6, 0.02, 0.03), e.a);
-  }
-  diffuseColor.rgb = c;
-  gRough = rough;
-}`
-      )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = gRough;');
-  };
-  mat.customProgramCacheKey = () => 'suit-v1';
-  return mat;
-}
-
-// Emblem textures with alpha, drawn once.
-function emblemTextures() {
-  return [spiderEmblemTexture('#000'), spiderEmblemTexture('#fff', true)];
-}
+// Bunica on the Mixamo X Bot rig. The dress, cardigan, tights, slippers and face are painted by a
+// shader in bind-pose space (see bunica.js), so they stay glued to the body while the skeleton
+// moves. Ground motion comes from the idle/walk/run clips; air poses are solved by aiming bones at
+// target directions and blended on top.
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z).normalize();
 
@@ -187,6 +71,13 @@ function airPose(name, t, k) {
   return null;
 }
 
+const HEIGHT = 0.93;
+const HEAD = 1.25;
+const _lq = new THREE.Quaternion();
+const _lq2 = new THREE.Quaternion();
+const _lq3 = new THREE.Quaternion();
+const _lax = new THREE.Vector3();
+
 export class XbotHero {
   static async load(url) {
     const gltf = await new GLTFLoader().loadAsync(url);
@@ -196,17 +87,29 @@ export class XbotHero {
   constructor(gltf) {
     this.root = new THREE.Group();
     this.model = gltf.scene;
+    this.model.scale.setScalar(HEIGHT); // a grandmother is shorter than a mannequin
     this.root.add(this.model);
-    const [emb, embBig] = emblemTextures();
-    this.material = suitMaterial(emb, embBig);
+    this.scarfU = { uScarfA: { value: new THREE.Color() }, uScarfB: { value: new THREE.Color() } };
+    this.material = bunicaMaterial(this.scarfU);
+    this.propsMaterial = propsMaterial(this.scarfU);
+    let body;
     this.model.traverse((o) => {
       if (o.isSkinnedMesh) {
         o.material = this.material;
         o.castShadow = true;
         o.receiveShadow = true;
         o.frustumCulled = false;
+        body = o;
       }
     });
+    // The skirt, basma knot, glasses, bag and slipper fleece share the mannequin's skeleton.
+    this.props = buildProps(body, this.propsMaterial);
+    this.props.position.copy(body.position);
+    this.props.quaternion.copy(body.quaternion);
+    this.props.scale.copy(body.scale);
+    body.parent.add(this.props);
+    this.props.updateMatrixWorld(true);
+    this.props.bind(body.skeleton, body.bindMatrix);
     const b = (n) => this.model.getObjectByName('mixamorig' + n);
     this.bones = {
       hips: b('Hips'), spine: b('Spine1'), neck: b('Neck'), head: b('Head'),
@@ -220,6 +123,7 @@ export class XbotHero {
       spine: this.bones.neck, rArm: this.bones.rFore, rFore: this.bones.rHand, lArm: this.bones.lFore, lFore: this.bones.lHand,
       lThigh: this.bones.lShin, lShin: this.bones.lFoot, rThigh: this.bones.rShin, rShin: this.bones.rFoot,
     };
+    this.bones.head.scale.setScalar(HEAD); // a big head for a small grandmother
     this.hipsRest = this.bones.hips.position.clone();
     this.mixer = new THREE.AnimationMixer(this.model);
     const clip = (n) => gltf.animations.find((a) => a.name === n);
@@ -233,7 +137,8 @@ export class XbotHero {
     this.weights = { idle: 1, walk: 0, run: 0 };
     this.airW = 0;
     this.pose = null;
-    this.suit = 'classic';
+    this.over = null; // { w, spine?, rArm?, ... }: limb directions from the combat, blended over everything else
+    this.setScarf(0);
     this._q = new THREE.Quaternion();
     this._q2 = new THREE.Quaternion();
     this._pq = new THREE.Quaternion();
@@ -243,13 +148,24 @@ export class XbotHero {
     this.crouch = 0;
   }
 
+  // The colour of the basma: an index into SCARFS, or its id.
+  setScarf(which) {
+    const n = SCARFS.length;
+    const i = typeof which === 'number' ? ((which % n) + n) % n : Math.max(0, SCARFS.findIndex((s) => s.id === which));
+    const s = SCARFS[i];
+    this.scarfIndex = i;
+    this.suit = s.id;
+    this.suitLabel = s.label;
+    this.scarfU.uScarfA.value.set(s.a);
+    this.scarfU.uScarfB.value.set(s.b);
+  }
+
   setSuit(name) {
-    this.suit = name;
-    this.material.userData.uniforms.uBlack.value = name === 'symbiote' ? 1 : 0;
+    this.setScarf(name);
   }
 
   toggleSuit() {
-    this.setSuit(this.suit === 'classic' ? 'symbiote' : 'classic');
+    this.setScarf(this.scarfIndex + 1);
   }
 
   handWorld(out) {
@@ -270,6 +186,28 @@ export class XbotHero {
     bone.quaternion.slerp(target, w);
   }
 
+  // Blend the limbs of `P` (hero space directions per key) into the skeleton with weight w.
+  pose_(P, w) {
+    const rq = this.root.getWorldQuaternion(_lq3);
+    const order = ['spine', 'rArm', 'rFore', 'lArm', 'lFore', 'lThigh', 'lShin', 'rThigh', 'rShin'];
+    for (const key of order) {
+      if (!P[key]) continue;
+      const d = this._d.copy(P[key]).applyQuaternion(rq);
+      this.aim(this.bones[key], this.child[key], d, w);
+      this.bones[key].updateMatrixWorld(true);
+    }
+  }
+
+  // Pitch `bone` forward by `angle` about the hero's own left-right axis, in world space, so it does
+  // not depend on the bone's local axes.
+  lean(bone, angle) {
+    _lax.set(1, 0, 0).applyQuaternion(this.root.getWorldQuaternion(_lq));
+    bone.updateWorldMatrix(true, false);
+    const world = bone.getWorldQuaternion(_lq2).premultiply(_lq3.setFromAxisAngle(_lax, angle));
+    bone.quaternion.copy(world).premultiply(bone.parent.getWorldQuaternion(_lq).invert());
+    bone.updateMatrixWorld(true);
+  }
+
   animate(name, dt, t, params = {}, rate = 10, speed = 0) {
     // Ground locomotion from clips.
     const ground = name === 'idle' || name === 'run';
@@ -283,6 +221,15 @@ export class XbotHero {
     }
     this.actions.run.timeScale = clamp(speed / 9, 0.6, 1.5);
     this.mixer.update(dt);
+    this.root.updateMatrixWorld(true);
+    // The stoop of age: lean forward standing or walking, head kept up, nothing in the air.
+    const stoop = (this.weights.idle * 1 + this.weights.walk * 0.5) * (1 - this.airW);
+    if (stoop > 0.01) {
+      this.lean(this.bones.spine, 0.2 * stoop);
+      this.lean(this.bones.spine2, 0.14 * stoop);
+      this.lean(this.bones.neck, -0.16 * stoop);
+      this.lean(this.bones.head, -0.08 * stoop);
+    }
 
     // Air poses on top.
     const pose = airPose(name, t, params.phase || 0);
@@ -290,20 +237,10 @@ export class XbotHero {
     this.airW += (targetW - this.airW) * damp(pose ? rate : 6, dt);
     if (pose) this.pose = pose;
     const P = this.pose;
-    this.root.updateMatrixWorld(true);
     const crouchWant = pose && pose.crouch ? pose.crouch : 0;
     this.crouch += (crouchWant - this.crouch) * damp(10, dt);
-    if (P && this.airW > 0.01) {
-      const rq = this.root.getWorldQuaternion(new THREE.Quaternion());
-      const w = this.airW;
-      const order = ['spine', 'rArm', 'rFore', 'lArm', 'lFore', 'lThigh', 'lShin', 'rThigh', 'rShin'];
-      for (const key of order) {
-        if (!P[key]) continue;
-        const d = this._d.copy(P[key]).applyQuaternion(rq);
-        this.aim(this.bones[key], this.child[key], d, w);
-        this.bones[key].updateMatrixWorld(true);
-      }
-    }
+    if (P && this.airW > 0.01) this.pose_(P, this.airW);
+    if (this.over && this.over.w > 0.01) this.pose_(this.over, this.over.w);
     // Crouch: drop the hips (bone units are centimetres under a 0.01 armature).
     this.bones.hips.position.y = this.hipsRest.y - this.crouch * 100 * this.airW;
   }
