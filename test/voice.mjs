@@ -31,7 +31,7 @@ const hasAudio = existsSync(`${DIR}/manifest.json`);
   const bad = CONTRACT.flatMap((k) => (LINES[k] || []).map((l, n) => [k, n, l])).filter(([, , [ro, it]]) => typeof ro !== 'string' || typeof it !== 'string' || ro.trim().length < 3 || it.trim().length < 3);
   check('every line has a Romanian text and an Italian subtitle', bad.length === 0, { bad: bad.map((b) => b.slice(0, 2)) });
   const texts = Object.values(LINES).flat().flatMap(([ro, it]) => [ro, it]);
-  const dashes = texts.filter((t) => /[–—]/.test(t));
+  const dashes = texts.filter((t) => /[\u2013\u2014]/.test(t));
   const cedilla = texts.filter((t) => /[ŞşŢţ]/.test(t));
   check('no em dash and no cedilla forms (ș and ț are the comma below ones)', dashes.length === 0 && cedilla.length === 0, { dashes, cedilla });
   const dup = Object.entries(LINES).flatMap(([k, rows]) => rows.filter((r, i) => rows.findIndex((q) => q[0] === r[0]) !== i).map((r) => `${k}: ${r[0]}`));

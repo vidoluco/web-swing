@@ -322,6 +322,72 @@ try {
     check('NEGATIVE: Alt + 9 has no place behind it and does nothing', still[0] === 3000 && still[1] === 3000, still);
   }
 
+  // The music: it comes up near a supreme bar, only after the audio context exists, and not from far away.
+  {
+    const [bx, bz] = where['Ironic Taproom'];
+    let r = await page.evaluate(async ([x, z]) => {
+      const g = window.__game, T = window.__t, bars = g.systems.get('bars');
+      await T.stage(x, z, 20, 0);
+      const s = T.bar('Ironic'), [ax, az] = T.away(s, 15);
+      g.player.pos.set(ax, 0, az);
+      g.advance(0.5);
+      return { registered: !!bars, silentBeforeAudio: bars.state().notes === 0 && !g.sfx.ctx };
+    }, [bx, bz]);
+    check('the bars system is registered, and stays silent until the audio context exists (first click)', r.registered && r.silentBeforeAudio, r);
+    await page.keyboard.press('KeyH'); // a user gesture
+    await page.evaluate(() => window.__game.sfx.init());
+    r = await page.evaluate(async () => {
+      const g = window.__game, bars = g.systems.get('bars'), out = {};
+      for (let i = 0; i < 4; i++) {
+        g.advance(0.25);
+        await new Promise((ok) => setTimeout(ok, 250));
+      }
+      out.near = bars.state();
+      out.running = g.sfx.ctx.state;
+      return out;
+    });
+    check('POSITIVE: fifteen metres from Ironic Taproom its music plays (notes scheduled, audible level)', r.near.playing === 'ironic' && r.near.notes > 5 && r.near.level > 0.1, r);
+    r = await page.evaluate(async () => {
+      const g = window.__game, T = window.__t, bars = g.systems.get('bars'), s = T.bar('Ironic');
+      g.player.pos.set(s.poi.x + 400, 0, s.poi.z);
+      const n0 = bars.state().notes;
+      for (let i = 0; i < 4; i++) {
+        g.advance(0.25);
+        await new Promise((ok) => setTimeout(ok, 250));
+      }
+      return { ...bars.state(), added: bars.state().notes - n0 };
+    });
+    check('NEGATIVE: four hundred metres away there is no music', r.playing === null && r.level === 0 && r.added === 0, r);
+  }
+
+  // Cost: game ticks (no drawing) next to a supreme bar with its music and a voice line, with and without the bars system.
+  {
+    const r = await page.evaluate(() => {
+      const g = window.__game, T = window.__t, s = T.bar('Ironic'), sys = g.systems.get('bars');
+      const [ax, az] = T.away(s, 12);
+      g.player.pos.set(ax, 0, az);
+      g.simulate(1, 1 / 60);
+      const med = (v) => v.sort((a, b) => a - b)[v.length >> 1];
+      const tick = () => {
+        g.voice.say('dog', { force: true });
+        const t0 = performance.now();
+        g.simulate(4, 1 / 60);
+        return (performance.now() - t0) / 240;
+      };
+      const on = [], off = [];
+      for (let round = 0; round < 5; round++) {
+        on.push(tick());
+        g.systems.remove('bars');
+        off.push(tick());
+        g.systems.add(sys);
+      }
+      const f = (v) => +med(v).toFixed(3);
+      return { tickMsWith: f(on), tickMsWithout: f(off), tickMsBars: +(f(on) - f(off)).toFixed(3) };
+    });
+    console.log('COST per game tick next to a supreme bar (music playing, voice line active), ms:', JSON.stringify(r));
+    check('the music of a bar costs under 0.5 ms per game tick', r.tickMsBars < 0.5, r);
+  }
+
   // Pictures: the bar from the street, and standing in the circle (double vision, the line, the toast).
   {
     await page.evaluate(() => document.getElementById('overlay').classList.add('hidden'));
