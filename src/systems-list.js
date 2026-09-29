@@ -17,4 +17,5 @@ export default [
   () => import('./strays.js'), // living:
   () => import('./pigeons.js'), // living:
   () => import('./ambience.js'), // living:
+  () => import('./env.js'),
 ];

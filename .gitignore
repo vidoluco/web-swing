@@ -1,7 +1,9 @@
 node_modules/
 dist/
 data/
-shots/
+shots/*
+# light: the comparison page of the three styles is a deliverable, the rest of shots/ stays local
+!shots/directions/
 .DS_Store
 # personal API keys (Google tiles, Sketchfab, Hugging Face): never committed
 .*-key

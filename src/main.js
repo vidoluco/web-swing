@@ -594,6 +594,7 @@ const game = {
   events,
   actors, // actors:
   clothesline, // bunica: the rope, for tests
+  gfx: { composer, csm, sky }, // light: the render pieces src/env.js takes over
   hud,
   save,
   minimap,

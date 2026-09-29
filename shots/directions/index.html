@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tre direzioni di stile · Web Swing</title>
+<style>
+  :root { color-scheme: dark; --ink: #f2f4f8; --dim: #a9b1bf; --line: #2a3140; --accent: #ff9f4a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0c0f14; color: var(--ink); font: 16px/1.5 "Helvetica Neue", system-ui, sans-serif; }
+  header, section { max-width: 1900px; margin: 0 auto; padding: 24px 20px 8px; }
+  h1 { margin: 0 0 6px; font-size: clamp(26px, 4vw, 40px); letter-spacing: 0.01em; }
+  h2 { margin: 26px 0 2px; font-size: clamp(20px, 2.6vw, 28px); }
+  .lead { color: var(--dim); max-width: 70ch; margin: 0; }
+  .legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+  .legend div { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: #121722; }
+  .legend b { display: block; color: var(--accent); font-size: 18px; }
+  .legend span { color: var(--dim); font-size: 15px; }
+  .note { color: var(--dim); margin: 0 0 12px; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  figure { margin: 0; }
+  figure a { display: block; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #121722; }
+  figure img { display: block; width: 100%; height: auto; aspect-ratio: 1600 / 900; }
+  figcaption { margin: 6px 2px 0; font-weight: 800; font-size: 17px; }
+  footer { max-width: 1900px; margin: 0 auto; padding: 28px 20px 48px; color: var(--dim); font-size: 15px; }
+  #zoom { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; background: rgba(4,6,10,0.94); cursor: zoom-out; }
+  #zoom.on { display: flex; }
+  #zoom img { max-width: 100vw; max-height: 100vh; object-fit: contain; }
+  #zoom span { position: fixed; left: 16px; bottom: 14px; font-weight: 800; font-size: 17px; text-shadow: 0 1px 4px #000; }
+  @media (max-width: 900px) { .row, .legend { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tre direzioni di stile</h1>
+  <p class="lead">Le stesse quattro inquadrature dal gioco vero, con lo stesso codice, cambiando solo lo stile (tasto B, o ?style=a|b|c). Tocca un’immagine per ingrandirla. Sotto, la notte nello stile predefinito.</p>
+  <div class="legend"><div><b>A · Realistico</b><span>Il PBR di oggi spinto: grading filmico, aria e foschia in profondità, sole caldo con ombre lunghe, riflessi veri sull’acqua.</span></div><div><b>B · Pixar</b><span>Colori saturi e caldi, ombre morbide, luce di contorno sui bordi, bagliore delicato e un cielo un po’ esagerato.</span></div><div><b>C · Cartoon</b><span>Luce a fasce piatte, contorni a inchiostro su edifici ed eroina, colori pieni e nuvole di carta.</span></div></div>
+</header>
+<section><h2>Piața Unirii dall’alto</h2><p class="note">17:30, ora d’oro. Il viale verso il Parlamento e il sole basso a sinistra.</p><div class="row"><figure><a href="unirii-a.jpg"><img src="unirii-a.jpg" loading="lazy" alt="A · Realistico" width="1600" height="900"></a><figcaption>A · Realistico</figcaption></figure><figure><a href="unirii-b.jpg"><img src="unirii-b.jpg" loading="lazy" alt="B · Pixar" width="1600" height="900"></a><figcaption>B · Pixar</figcaption></figure><figure><a href="unirii-c.jpg"><img src="unirii-c.jpg" loading="lazy" alt="C · Cartoon" width="1600" height="900"></a><figcaption>C · Cartoon</figcaption></figure></div></section>
+<section><h2>Uno swing lungo il Bd. Unirii</h2><p class="note">17:30. Verso il Parlamento, con il sole in faccia.</p><div class="row"><figure><a href="swing-a.jpg"><img src="swing-a.jpg" loading="lazy" alt="A · Realistico" width="1600" height="900"></a><figcaption>A · Realistico</figcaption></figure><figure><a href="swing-b.jpg"><img src="swing-b.jpg" loading="lazy" alt="B · Pixar" width="1600" height="900"></a><figcaption>B · Pixar</figcaption></figure><figure><a href="swing-c.jpg"><img src="swing-c.jpg" loading="lazy" alt="C · Cartoon" width="1600" height="900"></a><figcaption>C · Cartoon</figcaption></figure></div></section>
+<section><h2>Un blocco di Drumul Taberei da vicino</h2><p class="note">17:30. I palazzoni a pannelli con la luce radente sulla facciata ovest.</p><div class="row"><figure><a href="taberei-a.jpg"><img src="taberei-a.jpg" loading="lazy" alt="A · Realistico" width="1600" height="900"></a><figcaption>A · Realistico</figcaption></figure><figure><a href="taberei-b.jpg"><img src="taberei-b.jpg" loading="lazy" alt="B · Pixar" width="1600" height="900"></a><figcaption>B · Pixar</figcaption></figure><figure><a href="taberei-c.jpg"><img src="taberei-c.jpg" loading="lazy" alt="C · Cartoon" width="1600" height="900"></a><figcaption>C · Cartoon</figcaption></figure></div></section>
+<section><h2>Rissa in strada</h2><p class="note">17:30. Tre teppisti, due passanti e un poliziotto sull’asfalto vicino all’Ateneo.</p><div class="row"><figure><a href="brawl-a.jpg"><img src="brawl-a.jpg" loading="lazy" alt="A · Realistico" width="1600" height="900"></a><figcaption>A · Realistico</figcaption></figure><figure><a href="brawl-b.jpg"><img src="brawl-b.jpg" loading="lazy" alt="B · Pixar" width="1600" height="900"></a><figcaption>B · Pixar</figcaption></figure><figure><a href="brawl-c.jpg"><img src="brawl-c.jpg" loading="lazy" alt="C · Cartoon" width="1600" height="900"></a><figcaption>C · Cartoon</figcaption></figure></div></section>
+<section><h2>Di notte, nello stile predefinito</h2><p class="note">Finestre e lampioni accesi, luna, stelle, pozze di luce calda sotto i lampioni.</p><div class="row"><figure><a href="night-avenue.jpg"><img src="night-avenue.jpg" loading="lazy" alt="Il Bd. Unirii dall’alto, di notte" width="1600" height="900"></a><figcaption>Il Bd. Unirii dall’alto, di notte</figcaption></figure><figure><a href="night-street.jpg"><img src="night-street.jpg" loading="lazy" alt="A piedi sotto i lampioni" width="1600" height="900"></a><figcaption>A piedi sotto i lampioni</figcaption></figure><figure><a href="night-swing.jpg"><img src="night-swing.jpg" loading="lazy" alt="Swing nella notte" width="1600" height="900"></a><figcaption>Swing nella notte</figcaption></figure></div></section>
+<footer>Immagini prese dal gioco a 1600×900, senza interfaccia. Cielo, luce, ombre, acqua e post-processing sono del sistema di luce; edifici e strade sono quelli di oggi e cambieranno con il lavoro sulla città.</footer>
+<div id="zoom" role="dialog" aria-label="Immagine ingrandita"><img alt=""><span></span></div>
+<script>
+  const z = document.getElementById('zoom'), zi = z.querySelector('img'), zs = z.querySelector('span');
+  document.querySelectorAll('figure a').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    zi.src = a.href;
+    zs.textContent = a.parentElement.querySelector('figcaption').textContent;
+    z.classList.add('on');
+  }));
+  z.addEventListener('click', () => z.classList.remove('on'));
+  addEventListener('keydown', (e) => e.key === 'Escape' && z.classList.remove('on'));
+</script>
+</body>
+</html>
