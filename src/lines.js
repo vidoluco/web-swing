@@ -17,10 +17,10 @@ export const LINES = {
     ['Merg cu ea la piață!', 'La porto al mercato!'],
   ],
   stealtaxi: [
-    ['Taximetristă sunt acum!', 'Taxi! Ah, adesso la tassista sono io!'],
+    ['Acum sunt taximetristă!', 'Taxi! Ah, adesso la tassista sono io!'],
     ['Aparatul e stricat!', 'Il tassametro è rotto!'],
     ['Până la Obor, 200 de lei!', 'Fino a Obor, 200 lei!'],
-    ['Cursa e pe casa mea!', 'La corsa offre la casa!'],
+    ['Cursa e gratis, dragă!', 'La corsa è gratis, cara!'],
   ],
   stealpolice: [
     ['Acte la control, băiete!', 'Documenti, ragazzo!'],
@@ -51,7 +51,7 @@ export const LINES = {
     ['Văd două Parlamente!', 'Vedo due Parlamenti!'],
   ],
   wasted: [
-    ['Te iubesc pe toți!', 'Voglio bene a tutti!'],
+    ['Vă iubesc pe toți!', 'Voglio bene a tutti!'],
     ['Pământul se mișcă!', 'La terra si muove!'],
     ['Cine a mutat casa?', 'Chi ha spostato la casa?'],
     ['Nu-s beată, sunt fericită!', 'Non sono ubriaca, sono felice!'],
@@ -121,7 +121,7 @@ export const LINES = {
     ['Eu? Nevinovată!', 'Io? Innocente!'],
   ],
   wanted3: [
-    ['Toată poliția e pe mine!', 'Tutta la polizia mi cerca!'],
+    ['Toată poliția e după mine!', 'Tutta la polizia mi cerca!'],
     ['Prea multe sirene, mamă!', 'Troppe sirene, mamma!'],
     ['Îmi trebuie un avocat!', 'Mi serve un avvocato!'],
   ],

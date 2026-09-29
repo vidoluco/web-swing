@@ -9,8 +9,9 @@ edge-tts, so the game plays plain mp3 files and needs no speech synthesis in the
 
 Every line is written twice, public/audio/voice/<kind>-<n>.a.mp3 and .b.mp3 (the two voices the game
 alternates), and public/audio/voice/manifest.json lists kind, n, Romanian, Italian and durations.
-edge-tts pads every file with a second of silence, so with ffmpeg installed the silence at both ends is
-trimmed and the durations are those of the speech itself; without ffmpeg the files stay as they come.
+edge-tts pads every file with a second of silence and the two voices differ by about 3 dB, so with ffmpeg
+installed the silence at both ends is trimmed and every line is levelled to the same loudness; the durations
+are those of the speech itself. Without ffmpeg the files stay as they come.
 The first run creates ./.venv and installs edge-tts there. The folder is git ignored on purpose:
 edge-tts talks to a Microsoft service that is not an official API, and the repository is public.
 """
@@ -18,6 +19,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import venv
@@ -32,6 +34,8 @@ VOICES = {
     'b': {'voice': 'ro-RO-EmilNeural', 'rate': '+0%', 'pitch': '+0Hz'},
 }
 MAX_SECONDS = 4.0
+TARGET_MEAN = -19.0  # dB, the mean loudness every line is brought to
+PEAK_LIMIT = -1.5  # dB, the gain never pushes a peak above this
 
 
 def ensure_venv():
@@ -73,17 +77,28 @@ def duration(path):
 
 
 def trim(path):
-    """Cuts the silence off both ends of an mp3 (ffmpeg), keeping a short margin. False without ffmpeg."""
+    """Cuts the silence off both ends of an mp3 and levels it (ffmpeg): the two voices and all the lines
+    come out at about the same loudness, so the alternation does not jump. False without ffmpeg."""
     edge = 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.06'
     tail = 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.12'
-    tmp = path.with_suffix('.tmp.mp3')
+    wav, tmp = path.with_suffix('.tmp.wav'), path.with_suffix('.tmp.mp3')
     try:
-        r = subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', str(path), '-af', f'{edge},areverse,{tail},areverse', '-ac', '1', '-b:a', '64k', str(tmp)], capture_output=True)
+        r = subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', str(path), '-af', f'{edge},areverse,{tail},areverse', '-ac', '1', str(wav)], capture_output=True)
+        stats = subprocess.run(['ffmpeg', '-hide_banner', '-i', str(wav), '-af', 'volumedetect', '-f', 'null', '-'], capture_output=True, text=True).stderr
     except FileNotFoundError:
         return False
+    try:
+        mean = float(re.search(r'mean_volume: (-?[\d.]+) dB', stats).group(1))
+        peak = float(re.search(r'max_volume: (-?[\d.]+) dB', stats).group(1))
+    except AttributeError:  # nothing left after the trim
+        r.returncode = r.returncode or 1
+    if r.returncode == 0:
+        gain = min(TARGET_MEAN - mean, PEAK_LIMIT - peak)
+        r = subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', str(wav), '-af', f'volume={gain:.2f}dB', '-ac', '1', '-b:a', '64k', str(tmp)], capture_output=True)
+    wav.unlink(missing_ok=True)
     if r.returncode != 0 or not tmp.exists() or tmp.stat().st_size < 500:
         tmp.unlink(missing_ok=True)
-        print(f'  could not trim {path.name}: {r.stderr.decode()[:200]}')
+        print(f'  could not process {path.name}: {r.stderr.decode()[:200]}')
         return False
     tmp.replace(path)
     return True
