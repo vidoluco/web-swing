@@ -77,7 +77,26 @@ Bunica ha una barra della salute che si ricarica fuori dal combattimento. A zero
 - **Tre direzioni di stile**, da far scegliere a Ludovico con screenshot veri, non da una descrizione: **A** realistico (il PBR di oggi spinto), **B** stilizzato alla Pixar (colori saturi, ombre morbide, luce di contorno), **C** cartoon (toon a fasce e contorni). Si attivano con `?style=a|b|c`; stesse 4 inquadrature per tutte (Piața Unirii dall'alto, uno swing sul Bd. Unirii, un blocco di Drumul Taberei da vicino, una rissa in strada), raccolte in una pagina di confronto `shots/directions/index.html` aperta nel suo browser.
 - Nel giro 2, dopo la scelta: Bunica definitiva, monumenti (Casa Poporului, Ateneul, Arcul de Triumf) e passanti definitivi, tutti nello stile scelto.
 
-## Pezzo 4: modelli gratis e due giri
+## Pezzo 4: Brașov e la scelta della mappa
+
+Aggiunto il 29/09 su richiesta di Ludovico ("metti anche Brașov, non solo Bucarest", "devi mettere che puoi selezionare la mappa").
+
+**Scelta della mappa.** All'avvio, al posto del solo "clicca per giocare", una schermata con le due città, ognuna con un'immagine vera presa dal gioco: **București** e **Brașov**. La stessa scelta si apre dalla pausa. `?city=bucharest|brasov` salta la schermata (per test e link diretti). Respect, livelli e borcane sono condivisi fra le due città; ogni città tiene le sue missioni e i suoi record.
+
+**La città.** Ritaglio dall'estratto della Romania già su disco, nel riquadro 45,58–45,72 N, 25,50–25,68 E: tutta Brașov con Centrul Vechi, Schei, Răcădău, Tractorul, Bartolomeu e, a sud-ovest, Poiana Brașov. Origine delle coordinate in Piața Sfatului (45,6427 N, 25,5887 E). Il builder oggi ha l'origine fissa su Piața Unirii: diventa un parametro per città, come il riquadro.
+
+**Il rilievo.** Brașov senza montagne non è Brașov: il centro sta a circa 580 m, la Tâmpa arriva a 960 m e la Poiana a circa 1.000. Il terreno viene dal modello Copernicus GLO-30 (30 m, gratuito, senza account, attribuzione nei crediti), tessera N45 E025. Il gioco passa da "il suolo è a quota 0" a una funzione unica `city.groundAt(x, z)`, usata da fisica, traffico, passanti, bar e minimappa. Per Bucarest resta piatta e restituisce 0, quindi niente cambia e i 12 controlli devono continuare a passare. Gli edifici poggiano sul terreno, le strade lo seguono, i boschi della Tâmpa hanno gli alberi, e ci si può oscillare dai palazzi del centro su per il pendio.
+
+**Cosa c'è di Brașov.**
+
+- La scritta **BRAȘOV** sulla Tâmpa, costruita nel codice, a cui ci si può aggrappare.
+- Tasti 1-0 sui luoghi di Brașov, con coordinate dai dati OSM: Piața Sfatului, Biserica Neagră, Strada Sforii, Scritta sulla Tâmpa, Turnul Alb, Bastionul Țesătorilor, Poarta Schei, Gara Brașov, Parcul Central, Poiana Brașov.
+- **Urși**: gli orsi che scendono a frugare nei cassonetti di Schei e Răcădău, come i maidanezi a Bucarest. Il papuc li spaventa, ma un orso arrabbiato insegue.
+- Tre missioni **"Vacanță la Brașov"**: *Litera căzută* (la Ș della scritta è caduta: riportarla su prima che la vedano i turisti, arrampicata sul pendio), *Strada Sforii* (inseguire un borseggiatore nella via più stretta), *Ursul din Răcădău* (riportare un orso nel bosco senza far salire le stelle).
+- Una gara in discesa dalla Poiana al centro, fra le sfide.
+- Crimini, polizia, passanti, cani, giorno e notte funzionano anche qui, perché leggono i dati della città e non Bucarest. Brașov non ha più tram, quindi niente tram (i dati non hanno rotaie `tram` attive).
+
+## Pezzo 5: modelli gratis e due giri
 
 **Da dove vengono i modelli (giro 2).**
 
@@ -88,7 +107,7 @@ Bunica ha una barra della salute che si ricarica fuori dal combattimento. A zero
 
 Due correzioni rispetto a quanto detto il 28/09: **Hunyuan3D 2.1 non si può usare**, perché la sua licenza esclude l'Unione Europea, il Regno Unito e la Corea del Sud, e la Romania è in UE; al suo posto c'è TRELLIS.2. E **Google Photorealistic 3D Tiles resta escluso**: dall'8 luglio 2025 non viene servito ai progetti con fatturazione in UE.
 
-**Giro 1 (ora), senza account esterni:** tutto il pezzo 1, tutto il pezzo 2 con i modelli di oggi (X Bot ricolorato per i passanti, tram e cani costruiti nel codice), le facciate e i tetti procedurali, le tre direzioni di stile come screenshot. Finisce con la scelta dello stile da parte di Ludovico.
+**Giro 1 (ora), senza account esterni:** tutto il pezzo 1, tutto il pezzo 2 con i modelli di oggi (X Bot ricolorato per i passanti, tram, cani e orsi costruiti nel codice), tutto il pezzo 4 (Brașov col rilievo e la scelta della mappa), le facciate e i tetti procedurali, le tre direzioni di stile come screenshot. Finisce con la scelta dello stile da parte di Ludovico.
 
 **Giro 2 (dopo la scelta):** Bunica definitiva, Dacie, monumenti, passanti definitivi, rifinitura nello stile scelto. Servono tre account gratuiti suoi: token Sketchfab in `.sketchfab-key`, token Hugging Face in `.hf-key`, login Adobe per Mixamo. I file con le chiavi sono già esclusi da git.
 
@@ -96,14 +115,16 @@ Due correzioni rispetto a quanto detto il 28/09: **Hunyuan3D 2.1 non si può usa
 
 Niente è "fatto" senza prove:
 
-- **Test automatici** per ogni sistema, sul modello dei 12 di `test/physics.mjs` e con gli stessi hook `window.__game` (con `advance`/`simulate` il ciclo del browser resta fermo, per non rileggere l'input di test). Ognuna delle 6 missioni, ogni tipo di crimine, le stelle che salgono e scendono, una gara e un borcan raccolto hanno un test che li porta a termine davvero.
+- **Test automatici** per ogni sistema, sul modello dei 12 di `test/physics.mjs` e con gli stessi hook `window.__game` (con `advance`/`simulate` il ciclo del browser resta fermo, per non rileggere l'input di test). Ognuna delle 6 missioni di Bucarest e delle 3 di Brașov, ogni tipo di crimine, le stelle che salgono e scendono, una gara e un borcan raccolto hanno un test che li porta a termine davvero. Su Brașov in più: si sta in piedi sul pendio della Tâmpa senza sprofondare né galleggiare, e un'auto guidata in salita resta sulla strada.
 - **Casi positivi e negativi**: il crimine compare e poi sparisce quando è risolto; le stelle salgono e poi scendono a zero; il passante investito cade e le stelle salgono, quello non toccato no.
-- **Frame rate** con `node test/perf.mjs demo 30`, con tutti i sistemi attivi e la GPU libera (il gioco non aperto nel browser). Base misurata il 29/09 prima di iniziare: circa 118 fps, p50 8,3 ms, p95 9,2 ms. Soglia per il giro 1: p50 non oltre 11 ms e p95 non oltre 16,7 ms, cioè mai sotto i 60 fps; con `?lowq` gli stessi numeri o meglio.
+- **Frame rate** con `node test/perf.mjs demo 30`, con tutti i sistemi attivi e la GPU libera (il gioco non aperto nel browser). Base misurata il 29/09 prima di iniziare: circa 118 fps, p50 8,3 ms, p95 9,2 ms. Soglia per il giro 1, in tutte e due le città: p50 non oltre 11 ms e p95 non oltre 16,7 ms, cioè mai sotto i 60 fps; con `?lowq` gli stessi numeri o meglio.
 - **Screenshot** di ogni sistema e un **video** finale di un minuto (`test/showcase.mjs`) che mostra una missione, un crimine, un inseguimento della polizia e la città di notte.
 - **Nessun errore** in console o di pagina.
 
 ## Regole di lavoro
 
+- Gli agenti del giro girano su Sonnet 5.5 (richiesta di Ludovico del 29/09).
+- Prima di tutto una fondazione, fatta da un solo agente: `main.js` diventa un registro di sistemi (ognuno con init, update, HUD e hook di test sotto `__game`), con bus di eventi, azioni di input nuove, salvataggio, marker della minimappa, configurazione per città e `city.groundAt`. Poi i sistemi si costruiscono in parallelo senza pestarsi i piedi, ognuno nel suo worktree e con la sua porta per i test.
 - Git solo locale, su `main` in questa cartella. Ogni agente lavora su un suo branch o worktree e fa commit locali; l'integrazione avviene in locale. Il push è bloccato fisicamente nel repo (hook `pre-push` e `pushInsteadOf`); `gh` non va usato per niente che scriva.
 - Nessun commit con firme o trailer di AI.
 - Nessun account, chiave o servizio a pagamento nel giro 1.
