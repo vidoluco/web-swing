@@ -139,6 +139,7 @@ try {
     g.hud.setObjective(null);
     const objOff = $('objective').classList.contains('hidden');
     let calls = 0, sawGame = false;
+    const panels0 = $('hud-panels').children.length; // the systems' own panels are there already
     const late = g.hud.add('late', { order: 5, render(el, game) { calls++; sawGame = game === g; el.textContent = 'late ' + calls; } });
     const early = g.hud.add('early', { order: 1, render(el) { el.textContent = 'early'; } });
     const span = document.createElement('span');
@@ -171,6 +172,7 @@ try {
     const magenta = ([r, gg, b]) => r > 235 && gg < 25 && b > 235;
     const cx = c.width / 2, cy = c.height / 2;
     const draw = () => mm.draw(1, p, 0, null);
+    const owners0 = mm.markers.size; // the systems' own markers are there already
     const res = {};
     mm.setMarkers('t1', [{ x: p.x + 50, z: p.z, color: '#ff00ff', shape: 'dot' }, { x: p.x, z: p.z + 40, color: '#ff00ff', shape: 'square' }, { x: p.x - 50, z: p.z, color: '#ff00ff', shape: 'ring', label: 'Test' }]);
     draw();
@@ -190,7 +192,7 @@ try {
     mm.setMarkers('t1', []);
     mm.setMarkers('t2', null);
     draw();
-    res.cleared = !magenta(px(cx + 50 * s, cy + 60 * s)) && !magenta(px(c.width - 16, cy)) && mm.markers.size === 0;
+    res.cleared = !magenta(px(cx + 50 * s, cy + 60 * s)) && !magenta(px(c.width - 16, cy)) && mm.markers.size === owners0;
     return res;
   });
   check('minimap: markers draw by shape, off-map ones stick to the edge, an owner replaces or clears its own set', Object.values(r).every(Boolean), r);

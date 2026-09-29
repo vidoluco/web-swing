@@ -341,6 +341,10 @@ export class Drunk {
     this.t += dt;
     this.level = Math.max(0, this.level - dt / 35);
   }
+  // missions: set the level directly (a PET bottle adds 2 or 3, water sobers up to 0); the beer and tuica counters stay.
+  set(level) {
+    this.level = clamp(level, 0, 8);
+  }
   // 0 sober, 1 very drunk.
   get amount() {
     return clamp(this.level / 5, 0, 1);

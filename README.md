@@ -38,6 +38,7 @@ The hero is still the Spider-Man rig on `main`. The next round replaces it with 
 | 1 to 9, 0 | Piața Unirii, Parliament, Ateneu, Piața Victoriei, Arcul de Triumf, Herăstrău, Sky Tower, Casa Presei, Arena Națională, Drumul Taberei |
 | Alt + 1 to 3 | Anagram, Hop Hooligans, Ironic Taproom (the supreme bars) |
 | V, M, R | suit, minimap zoom, back to the start roof |
+| G | begin the next mission (from within 45 m of its yellow marker, or walk into it); silence a speaker in the speaker mission |
 
 Walk over the drinks in front of bars and kiosks (yellow dots on the minimap): a beer counts one, a țuică two, and it wears off in a few minutes. Stealing, drinking and crashing get a line in Romanian, with an Italian subtitle, spoken in one of two Romanian voices that take turns (see Voices below; without the audio files only the subtitle shows).
 
@@ -68,8 +69,12 @@ URL flags: `?lowq` for weaker GPUs, `?fps` for the frame rate, `?cars=N` for tra
 | Input | `game.input.state` adds `attackPressed` (left click or J), `throwPressed` (Q), `tiePressed` (C), `interactPressed` (G) and `pausePressed` (P) to the old fields. They only report, the systems decide what they mean |
 | HUD | DOM over the canvas, text 13 px or more, nothing overlapping down to phone width. `hud.add(id, { order, render(el, game) })` or an element adds a panel (render runs about ten times a second), `hud.toast(text)`, `hud.setObjective(text or null)`. `minimap.setMarkers(owner, [{ x, z, color, shape: 'dot' or 'ring' or 'square', label? }])` replaces that owner's markers |
 | Save | `game.save.get(key, fallback)` and `set(key, value)`, JSON under `webswing.v1` in localStorage, in memory when storage is blocked |
+| Respect | `game.respect` `{ value, level 1..10, into, span, add(n, why) }` (saved under `respect`; a loss never goes under the start of the level reached) and `game.perks` `{ ropeLen, maxHp, throwCount, scarves }` unlocked by level. Missions, races, jars and PET bottles pay into it, so does a `crime:solved` event |
+| Missions | `src/missions-data.js` lists the missions of each city (Bucharest "Pensia", 6; Brașov "Vacanță la Brașov", 3) as steps: `goto`, `deliver` (`race`), `defeat`, `tie`, `chase`, `steal`, `tail`, `destroy`, `escort`. `src/missions.js` runs them: yellow columns and minimap markers for the checkpoints, the objective and clock on the HUD, `game.missions` `{ list, active, start(id), abort(), timer }`, progress saved under `missions`, a failed run leaves nothing behind |
+| Challenges | `src/challenges-data.js` has 5 races per city (6 in Brașov, with the downhill from Poiana) with gold, silver and bronze times, best times saved under `challenges`. 50 jars of zacusca per city, saved under `borcane`. `game.challenges` |
+| PET bottles | six kinds (beer, wine, țuică, cola, water, juice), 20 per city, each with a glow in the colour of its content; `game.buffs` `{ add(name, s), has, left, active }` runs the 30 s bonuses (turbo, shield, fire, energy) and `game.pets`. Positions of jars and bottles: `node tools/make-collectibles.mjs <city>` writes `public/city/<id>/collect.json` (run it again after rebuilding a city) |
 
-Event names and payloads: `hit {target, dmg, by}`, `actor:down {actor}`, `actor:tied {actor}`, `crime:start {id, kind, pos}`, `crime:end {id, result}`, `wanted {stars}`, `busted`, `respect {amount, why}`, `mission:start {id}`, `mission:end {id, result}`, `car:stolen {car}`, `player:down`, `city:change {id}`.
+Event names and payloads: `hit {target, dmg, by}`, `actor:down {actor}`, `actor:tied {actor}`, `crime:start {id, kind, pos}`, `crime:end {id, result}`, `wanted {stars}`, `busted`, `respect {amount, why}`, `mission:start {id}`, `mission:end {id, result: 'done' or 'fail' or 'abort', why?}`, `challenge:start {id}`, `challenge:end {id, result, medal?, time?}`, `collect {kind: 'jar' or 'pet' or 'checkpoint', id, type?}`, `buff {name, seconds}`, `level:up {level}`, `car:stolen {car}`, `player:down`, `city:change {id}`.
 
 ## Voices
 

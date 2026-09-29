@@ -6,4 +6,10 @@ export default [
   () => import('./bars.js'), // bars: music from the supreme bars
   () => import('./crimes.js'), // crimes:
   () => import('./police.js'), // police:
+  () => import('./respect.js'),
+  () => import('./buffs.js'),
+  () => import('./missions.js'),
+  () => import('./challenges.js'),
+  () => import('./pets.js'),
+  () => import('./hudpanels.js'),
 ];

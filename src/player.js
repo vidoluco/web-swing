@@ -23,6 +23,7 @@ export class Player {
     this.lastSafe = new THREE.Vector3();
     this.swingFrom = new THREE.Vector3();
     this.ban = { x: 0, z: 0, t: 0 };
+    this.mods = { run: 1, climb: 1, jump: 1, swing: 1, rope: 1 }; // missions: multipliers from buffs and perks, set by src/buffs.js
     this.reset();
   }
 
@@ -125,7 +126,7 @@ export class Player {
   }
 
   jump() {
-    this.vel.y = PHYS.jumpSpeed;
+    this.vel.y = PHYS.jumpSpeed * this.mods.jump; // missions:
     const hs = Math.hypot(this.vel.x, this.vel.z);
     if (hs > 4) this.vel.addScaledVector(this.facing, 3);
     this.mode = 'air';
@@ -176,7 +177,7 @@ export class Player {
     this.anchor.copy(a);
     this.swingFrom.copy(this.pos);
     const d = this.pos.distanceTo(a);
-    this.ropeLen = d * 0.9;
+    this.ropeLen = d * 0.9 * this.mods.rope; // missions:
     this.mode = 'swing';
     this.swingTime = 0;
     this.webT = 0;
@@ -216,7 +217,7 @@ export class Player {
     const v = this.vel, p = this.pos;
     switch (this.mode) {
       case 'ground': {
-        const target = _w.copy(this.wish).multiplyScalar(PHYS.runSpeed * this.slopeRun(h));
+        const target = _w.copy(this.wish).multiplyScalar(PHYS.runSpeed * this.slopeRun(h) * this.mods.run); // missions: perk multiplier
         const k = damp((this.wish.lengthSq() > 0.01 ? 10 : 14) * (1 - 0.85 * this.slide), h); // terrain: no grip on rock this steep
         v.x += (target.x - v.x) * k;
         v.z += (target.z - v.z) * k;
@@ -257,7 +258,7 @@ export class Player {
         // Pump: push along the tangent in the steering direction while below the anchor.
         const steer = _w.copy(this.wish.lengthSq() > 0.01 ? this.wish : this.swingDir);
         const tangent = steer.addScaledVector(rh, -steer.dot(rh));
-        if (tangent.lengthSq() > 1e-4 && p.y < this.anchor.y) v.addScaledVector(tangent.normalize(), 17 * h);
+        if (tangent.lengthSq() > 1e-4 && p.y < this.anchor.y) v.addScaledVector(tangent.normalize(), 17 * this.mods.swing * h); // missions:
         if (this.wish.lengthSq() > 0.01) this.swingDir.lerp(this.wish, damp(1.5, h)).setY(0).normalize();
         this.clampSpeed();
         p.addScaledVector(v, h);
@@ -308,7 +309,7 @@ export class Player {
         const n = W.n;
         const side = _w.crossVectors(UP, n); // horizontal, along the wall
         const s = Math.sign(side.dot(this.camRight)) || 1;
-        const climb = inp.moveY * PHYS.climbSpeed * (inp.moveY > 0 ? 1.15 : 1);
+        const climb = inp.moveY * PHYS.climbSpeed * this.mods.climb * (inp.moveY > 0 ? 1.15 : 1); // missions:
         v.set(0, climb, 0).addScaledVector(side, inp.moveX * s * 6);
         p.addScaledVector(v, h);
         // Stay glued to the nearest face; walking past a corner moves onto the next face.
@@ -384,7 +385,8 @@ export class Player {
 
   clampSpeed() {
     const s = this.vel.length();
-    if (s > PHYS.maxSpeed) this.vel.multiplyScalar(PHYS.maxSpeed / s);
+    const cap = PHYS.maxSpeed * this.mods.swing; // missions:
+    if (s > cap) this.vel.multiplyScalar(cap / s);
   }
 
   collide() {
