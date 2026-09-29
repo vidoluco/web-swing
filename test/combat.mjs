@@ -265,7 +265,7 @@ try {
     const T = window.__t, g = window.__game, out = {};
     const wall = (z, half = 40) => {
       const x = g.player.pos.x;
-      g.city.addPrism({ outer: Float32Array.from([x - half, z - 0.2, x + half, z - 0.2, x + half, z + 0.2, x - half, z + 0.2]), holes: [], signs: [1], y0: 0, y1: 9, minx: x - half, maxx: x + half, minz: z - 0.2, maxz: z + 0.2, kind: 'building' });
+      g.city.addPrism({ outer: Float32Array.from([x - half, z - 0.2, x + half, z - 0.2, x + half, z + 0.2, x - half, z + 0.2]), holes: [], signs: [1], y0: 0, y1: 9, minx: x - half, maxx: x + half, minz: z - 0.2, maxz: z + 0.2, kind: 'building', test: true });
     };
     // The papuc thrown at a thug behind a wall bounces back; the same throw in the open connects.
     T.stand();
@@ -294,9 +294,236 @@ try {
       if (['telegraph', 'strike'].includes(g.combat.thugs()[0]?.state)) announced++;
     }
     out.thug = { announced, hp: g.health.hp, hurt: T.count('bunica:hurt'), state: g.combat.thugs()[0]?.state };
+    // Take the test walls out again.
+    for (const [k, a] of g.city.grid) g.city.grid.set(k, a.filter((p) => !p.test));
+    g.city.prisms = g.city.prisms.filter((p) => !p.test);
     return out;
   });
   check('a wall stops the papuc, the click and the thug (nothing lands through it)', !r.clearAcross && r.papuc.hp === 60 && r.papuc.state !== 'stunned' && r.papuc.left === 0 && r.click.mode === 'air' && r.click.hp === 60 && r.thug.announced === 0 && r.thug.hp === 100 && r.thug.hurt === 0, r);
+
+  // 11. Thugs in a group: at most two strike at once, none stacks on another, a lone hurt one runs.
+  r = await ev(() => {
+    const T = window.__t, g = window.__game, out = {};
+    T.stand();
+    for (const [dx, dz] of [[-9, -9], [9, -9], [-10, -3], [10, -3], [0, -11]]) g.combat.spawnThug(g.player.pos.x + dx, g.player.pos.z + dz, { exact: true });
+    const P = g.player.pos;
+    let maxAttackers = 0, minGap = 99, engaged = 0;
+    for (let t = 0; t < 9; t += 1 / 30) {
+      g.simulate(1 / 30, 1 / 30);
+      g.health.hp = g.health.max; // keep her up: this is about them
+      const bs = g.combat.thugs();
+      const att = bs.filter((b) => ['telegraph', 'strike', 'recover'].includes(b.state)).length;
+      maxAttackers = Math.max(maxAttackers, att);
+      const live = bs.map((b) => b.a);
+      for (let i = 0; i < live.length; i++)
+        for (let j = i + 1; j < live.length; j++) minGap = Math.min(minGap, Math.hypot(live[i].pos.x - live[j].pos.x, live[i].pos.z - live[j].pos.z));
+      engaged = Math.max(engaged, live.filter((a) => Math.hypot(a.pos.x - P.x, a.pos.z - P.z) < 3).length);
+    }
+    out.group = { maxAttackers, minGap: Math.round(minGap * 100) / 100, engaged };
+    // Alone and hurt: it runs away. With a mate beside it, it stays.
+    T.stand();
+    const lone = g.combat.spawnThug(g.player.pos.x, g.player.pos.z - 5, { exact: true });
+    lone.hit(38, 'test');
+    lone.stunT = 0;
+    lone.state = 'idle';
+    const d0 = Math.hypot(lone.pos.x - g.player.pos.x, lone.pos.z - g.player.pos.z);
+    g.simulate(4, 1 / 30);
+    const d1 = Math.hypot(lone.pos.x - g.player.pos.x, lone.pos.z - g.player.pos.z);
+    out.flee = { state: g.combat.thugs()[0].state, d0: Math.round(d0), d1: Math.round(d1) };
+    T.stand();
+    const hurt = g.combat.spawnThug(g.player.pos.x, g.player.pos.z - 5, { exact: true });
+    g.combat.spawnThug(g.player.pos.x + 2, g.player.pos.z - 6, { exact: true });
+    hurt.hit(38, 'test');
+    hurt.stunT = 0;
+    hurt.state = 'idle';
+    g.simulate(1.5, 1 / 30);
+    out.stays = g.combat.thugs().find((b) => b.a === hurt)?.state;
+    return out;
+  });
+  check('two strike at most at once and they keep their distance from each other', r.group.maxAttackers <= 2 && r.group.maxAttackers >= 1 && r.group.minGap > 0.7, r.group);
+  check('a lone hurt thug flees, one with company keeps fighting', r.flee.state === 'flee' && r.flee.d1 > r.flee.d0 + 8 && r.stays !== 'flee', { flee: r.flee, stays: r.stays });
+
+  // 12. Hitting a passer-by raises the heat; hitting only thugs does not.
+  r = await ev(() => {
+    const T = window.__t, g = window.__game, out = {};
+    const hits = (n) => T.log.filter((e) => e[0] === n);
+    T.stand();
+    const thug = T.thug(2.4);
+    const civ = g.actors.spawn('civilian', { x: g.player.pos.x + 0.3, z: g.player.pos.z - 1.4 }, { exact: true, persist: true });
+    const behind = g.actors.spawn('civilian', { x: g.player.pos.x, z: g.player.pos.z + 1.2 }, { exact: true, persist: true });
+    T.press({ attackPressed: true });
+    T.wait(0.5);
+    const heat = hits('heat');
+    out.blow = { heat: heat.length, amount: heat[0]?.[1].amount, why: heat[0]?.[1].why, civHp: civ.hp, behindHp: behind.hp, thugHp: thug.hp };
+    // The thrown papuc through a passer-by counts too.
+    T.stand();
+    const c2 = g.actors.spawn('civilian', { x: g.player.pos.x, z: g.player.pos.z - 8 }, { exact: true, persist: true });
+    T.press({ throwPressed: true });
+    T.wait(1.2);
+    out.papuc = { heat: hits('heat').length, hp: c2.hp, state: c2.state };
+    // Only thugs: no heat.
+    T.stand();
+    T.thug(2.4);
+    T.press({ attackPressed: true });
+    T.wait(0.6);
+    out.thugsOnly = hits('heat').length;
+    return out;
+  });
+  check('a blow that catches a passer-by raises heat, one behind her is spared', r.blow.heat === 1 && r.blow.amount === 0.5 && r.blow.civHp < 30 && r.blow.behindHp === 30 && r.blow.thugHp < 60, r.blow);
+  check('the thrown papuc stuns a passer-by and raises heat; hitting only thugs does not', r.papuc.heat === 1 && r.papuc.hp < 30 && r.thugsOnly === 0, { papuc: r.papuc, thugsOnly: r.thugsOnly });
+
+  // 13. Buffs and perks from the missions: turbo doubles the papuc, fire throws them back, throwCount allows two.
+  r = await ev(() => {
+    const T = window.__t, g = window.__game, out = {};
+    const throwAt = (buff, d = 10) => {
+      T.stand();
+      g.buffs = { has: (n) => n === buff };
+      const a = g.actors.spawn('thug', { x: g.player.pos.x, z: g.player.pos.z - d }, { exact: true, persist: true });
+      const z0 = a.pos.z;
+      T.press({ throwPressed: true });
+      T.wait(1.6);
+      g.buffs = undefined;
+      return { hp: a.hp, pushed: Math.round((z0 - a.pos.z) * 10) / 10 };
+    };
+    out.plain = throwAt(null);
+    out.turbo = throwAt('turbo');
+    out.fire = throwAt('fire');
+    T.stand();
+    g.actors.spawn('thug', { x: g.player.pos.x, z: g.player.pos.z - 20 }, { exact: true, persist: true });
+    T.press({ throwPressed: true });
+    T.wait(0.3);
+    T.press({ throwPressed: true });
+    out.single = g.combat.state().papucs.length;
+    T.wait(3);
+    g.perks = { throwCount: 2 };
+    T.press({ throwPressed: true });
+    T.wait(0.3);
+    T.press({ throwPressed: true });
+    out.double = g.combat.state().papucs.length;
+    g.perks = undefined;
+    return out;
+  });
+  check('turbo doubles the papuc damage, fire knocks the thug back', r.plain.hp === 52 && r.turbo.hp === 44 && r.fire.pushed > r.plain.pushed + 2, { plain: r.plain, turbo: r.turbo, fire: r.fire });
+  check('one papuc in the air at a time, two with the throwCount perk', r.single === 1 && r.double === 2, { single: r.single, double: r.double });
+
+  // 14. The hit stop freezes the game for 60 ms of real time at each hit.
+  r = await ev(() => {
+    const T = window.__t, g = window.__game;
+    T.stand();
+    T.thug(2);
+    const t0 = g.time;
+    T.press({ attackPressed: true });
+    T.wait(0.6);
+    return { lost: Math.round((0.6 + 1 / 60 - (g.time - t0)) * 1000) / 1000 };
+  });
+  check('the first hit of a blow stops the game for about 60 ms', r.lost > 0.04 && r.lost < 0.09, r);
+
+  // 15. The clothesline: laundry hangs on the cord while she swings, nothing when she does not.
+  r = await ev(() => {
+    const T = window.__t, g = window.__game;
+    T.stand(-300, 12);
+    const before = { shown: g.clothesline.shown, cord: g.clothesline.cord.visible };
+    g.look(Math.PI / 2, -0.2);
+    g.setInput({ moveY: 1 });
+    g.simulate(0.3);
+    g.setInput({ moveY: 1, jumpPressed: true });
+    g.simulate(1 / 60);
+    g.setInput({ moveY: 1 });
+    g.simulate(0.3);
+    g.setInput({ moveY: 1, swing: true });
+    const modes = new Set();
+    let shown = 0, cord = false;
+    for (let i = 0; i < 90; i++) {
+      g.simulate(1 / 30, 1 / 30);
+      modes.add(g.player.mode);
+      shown = Math.max(shown, g.clothesline.shown);
+      cord = cord || g.clothesline.cord.visible;
+    }
+    g.setInput(null);
+    g.simulate(1.5);
+    return { before, swung: modes.has('swing'), shown, cord, after: { shown: g.clothesline.shown, cord: g.clothesline.cord.visible } };
+  });
+  check('the web is a clothesline with laundry while swinging, gone after', r.before.shown === 0 && !r.before.cord && r.swung && r.shown >= 2 && r.cord && r.after.shown === 0 && !r.after.cord, r);
+
+  // 16. V cycles the colour of the basma.
+  r = await ev(() => {
+    const T = window.__t, g = window.__game;
+    T.stand();
+    const seen = [g.hero.suit];
+    for (let i = 0; i < 7; i++) {
+      T.press({ suitPressed: true });
+      seen.push(g.hero.suit);
+    }
+    return { seen, label: g.hero.suitLabel, state: g.state().suit };
+  });
+  check('V cycles through six basma colours and comes back to the first', new Set(r.seen).size === 6 && r.seen[6] === r.seen[0] && r.seen[7] !== r.seen[0], r);
+
+  // 17. What the system costs per tick with a fight going on, measured on the system itself.
+  r = await ev(() => {
+    const T = window.__t, g = window.__game;
+    T.stand();
+    for (const [dx, dz] of [[-8, -8], [8, -8], [-9, -3], [9, -3], [0, -10], [5, 8]]) g.combat.spawnThug(g.player.pos.x + dx, g.player.pos.z + dz, { exact: true, bat: dx > 0 });
+    const sys = g.systems.get('combat');
+    const orig = sys.update;
+    let ms = 0, n = 0;
+    sys.update = (dt) => {
+      const t = performance.now();
+      orig(dt);
+      ms += performance.now() - t;
+      n++;
+    };
+    for (let i = 0; i < 300; i++) {
+      g.health.hp = g.health.max;
+      g.simulate(1 / 60, 1 / 60);
+    }
+    sys.update = orig;
+    return { msPerTick: Math.round((ms / n) * 1000) / 1000, ticks: n };
+  });
+  console.log(`COST  combat system with 6 thugs: ${r.msPerTick} ms per tick over ${r.ticks} ticks`);
+  check('the combat system costs under 1 ms per tick with six thugs fighting', r.msPerTick < 1, r);
+
+  // 18. The voice lines are asked for at the right moments (silent no-ops until the lines exist).
+  r = await ev(() => {
+    const T = window.__t, g = window.__game;
+    const said = [];
+    const orig = g.voice.say;
+    g.voice.say = (k) => said.push(k);
+    const kinds = () => [...new Set(said.splice(0))];
+    const out = {};
+    T.stand();
+    T.thug(2.2);
+    T.press({ attackPressed: true });
+    T.wait(0.5);
+    out.blow = kinds();
+    T.stand();
+    g.actors.spawn('thug', { x: g.player.pos.x, z: g.player.pos.z - 6 }, { exact: true, persist: true });
+    T.press({ throwPressed: true });
+    T.wait(0.9);
+    T.press({ tiePressed: true });
+    T.wait(1.5);
+    out.throwAndTie = kinds();
+    T.stand();
+    T.thug(4.5);
+    T.until(() => g.combat.state().telegraphs > 0, 8);
+    T.press({ jumpPressed: true });
+    T.wait(1);
+    out.dodge = kinds();
+    T.stand();
+    g.health.damage(10, 'x');
+    out.hurt = kinds();
+    g.health.damage(65, 'x');
+    out.low = kinds();
+    g.health.damage(1000, 'x');
+    out.down = kinds();
+    T.wait(4);
+    g.voice.say = orig;
+    return out;
+  });
+  check(
+    'punch, thrown, tie, dodge, hurt, lowHealth and knockout are said at their moments',
+    r.blow.includes('punch') && r.throwAndTie.includes('thrown') && r.throwAndTie.includes('tie') && r.dodge.includes('dodge') && r.hurt.includes('hurt') && r.low.includes('lowHealth') && r.down.includes('knockout'),
+    r,
+  );
 } catch (e) {
   console.log('CRASH', e);
   results.push({ name: 'crash', ok: false });

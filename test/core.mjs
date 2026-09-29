@@ -145,12 +145,14 @@ try {
     span.textContent = 'element';
     const raw = g.hud.add('raw', span);
     g.advance(1);
-    const order = [...$('hud-panels').children].sort((x, y) => x.getBoundingClientRect().left - y.getBoundingClientRect().left || x.getBoundingClientRect().top - y.getBoundingClientRect().top).map((e) => e.dataset.id);
+    // Panels of the real systems (health, respect, ...) are in the row too: look only at this test's own.
+    const own = (e) => ['raw', 'early', 'late'].includes(e.dataset.id);
+    const order = [...$('hud-panels').children].filter(own).sort((x, y) => x.getBoundingClientRect().left - y.getBoundingClientRect().left || x.getBoundingClientRect().top - y.getBoundingClientRect().top).map((e) => e.dataset.id);
     const res = { toastOn, toastOff, objOn, objOff, calls, sawGame, order, rawHas: raw.contains(span), parent: early.parentElement.id, texts: [early.textContent, late.textContent] };
     g.hud.remove('late');
     g.hud.remove('early');
     g.hud.remove('raw');
-    res.removed = $('hud-panels').children.length;
+    res.removed = [...$('hud-panels').children].filter(own).length;
     return res;
   });
   check('hud: toast shows and fades, objective line sets and clears', r.toastOn && r.toastOff && r.objOn && r.objOff, r);

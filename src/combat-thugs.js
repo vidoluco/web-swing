@@ -63,11 +63,12 @@ class Brain {
     this.state = 'idle';
     this.t = 0;
     this.cool = 0.3 + (seed % 7) * 0.08;
-    this.ang = ((seed * 2.399) % TAU); // the side of Bunica this thug likes
+    this.orbit = ((seed * 2.399) % TAU); // where it waits round Bunica while others have their turn
+    this.turn = -99; // when it last had a turn to attack
+    this.token = false;
     this.los = true;
     this.losT = 0;
     this.fleeT = 0;
-    this.attacker = false;
     this.pose = 0; // 0 arm down, 1 raised, -1 swung
     this.reach = bat ? BAT_REACH : REACH;
     this.dmg = bat ? 14 : 8;
@@ -164,7 +165,6 @@ export class Thugs {
       }
     }
     const calm = combat.fainted > 0 || game.driving?.();
-    // Who attacks: the two nearest that are close enough, a thug already committed keeps its turn.
     const live = [];
     for (const [a, b] of this.brains) {
       if (a.removed || a.state === 'down' || a.tied) {
@@ -173,19 +173,28 @@ export class Thugs {
       }
       live.push(b);
     }
-    live.sort((p, q) => Math.hypot(p.a.pos.x - P.x, p.a.pos.z - P.z) - Math.hypot(q.a.pos.x - P.x, q.a.pos.z - P.z));
-    let slots = 2;
+    // Two at most have a turn to attack, handed round: the one that waited longest goes first. The
+    // rest wait spread evenly round her, out of arm's reach.
+    let free = 2;
     for (const b of live) {
-      const busy = b.state === 'telegraph' || b.state === 'strike' || b.state === 'recover';
-      b.attacker = busy && slots > 0;
-      if (b.attacker) slots--;
+      if (b.token && !['approach', 'telegraph', 'strike', 'recover'].includes(b.state)) b.token = false;
+      if (b.token) free--;
     }
-    for (const b of live) {
-      if (!b.attacker && slots > 0 && ['approach', 'wait'].includes(b.state)) {
-        b.attacker = true;
-        slots--;
-      }
+    const waiting = live.filter((b) => !b.token && (b.state === 'approach' || b.state === 'wait'));
+    waiting.sort((p, q) => p.turn - q.turn || Math.hypot(p.a.pos.x - P.x, p.a.pos.z - P.z) - Math.hypot(q.a.pos.x - P.x, q.a.pos.z - P.z));
+    for (const b of waiting) {
+      if (free <= 0) break;
+      b.token = true;
+      b.turn = this.time;
+      free--;
     }
+    const idle = waiting.filter((b) => !b.token).sort((p, q) => Math.atan2(p.a.pos.x - P.x, p.a.pos.z - P.z) - Math.atan2(q.a.pos.x - P.x, q.a.pos.z - P.z));
+    const step = TAU / Math.max(idle.length, 1);
+    const base = idle.length ? Math.atan2(idle[0].a.pos.x - P.x, idle[0].a.pos.z - P.z) : 0;
+    idle.forEach((b, i) => {
+      b.orbit = wrap(base + i * step);
+      b.orbitR = ORBIT + (i % 2);
+    });
     let bang = 0;
     for (const b of live) {
       this.step(b, dt, calm, live, combat);
@@ -245,11 +254,12 @@ export class Thugs {
           b.state = 'idle';
           break;
         }
-        if (b.attacker) {
+        if (b.token) {
           b.state = 'approach';
-          // Walk round to this thug's own side and stop at arm's length.
+          // Straight at her, stopping at arm's length, and not on top of the other one.
           const stop = b.reach * 0.8;
-          const tx = P.x + Math.sin(b.ang) * stop, tz = P.z + Math.cos(b.ang) * stop;
+          const sep = this.separation(b, live);
+          const tx = P.x - (dx / (d || 1)) * stop + sep.x * 1.6, tz = P.z - (dz / (d || 1)) * stop + sep.z * 1.6;
           const near = d < b.reach + 0.6;
           if (!near) this.actors.walkTo(a, tx, tz, d > 5 ? a.speedRun : a.speedWalk * 2);
           else a.hasGoal = false;
@@ -261,9 +271,10 @@ export class Thugs {
           }
         } else {
           b.state = 'wait';
-          b.ang += dt * 0.12 * (a.id % 2 ? 1 : -1);
-          const tx = P.x + Math.sin(b.ang) * ORBIT, tz = P.z + Math.cos(b.ang) * ORBIT;
-          if (Math.hypot(tx - a.pos.x, tz - a.pos.z) > 1.2) this.actors.walkTo(a, tx, tz, a.speedWalk * 1.6);
+          const R = b.orbitR || ORBIT;
+          const sep = this.separation(b, live);
+          const tx = P.x + Math.sin(b.orbit) * R + sep.x * 1.6, tz = P.z + Math.cos(b.orbit) * R + sep.z * 1.6;
+          if (Math.hypot(tx - a.pos.x, tz - a.pos.z) > 1.2) this.actors.walkTo(a, tx, tz, d > 7 ? a.speedRun : a.speedWalk * 1.6);
           else a.hasGoal = false;
           turn(4);
         }
@@ -298,7 +309,8 @@ export class Thugs {
         b.t += dt;
         b.pose = -(1 - smooth(b.t / RECOVER));
         if (b.t >= RECOVER) {
-          b.state = 'approach';
+          b.state = 'wait';
+          b.token = false; // someone else's turn
           b.cool = 0.9 + this.game.rng() * 0.8;
           b.pose = 0;
         }
@@ -313,6 +325,21 @@ export class Thugs {
         break;
       }
     }
+  }
+
+  // A push away from the other thugs standing too close, so two never end up on one spot.
+  separation(b, live) {
+    const out = this.sep || (this.sep = { x: 0, z: 0 });
+    out.x = out.z = 0;
+    for (const o of live) {
+      if (o === b) continue;
+      const dx = b.a.pos.x - o.a.pos.x, dz = b.a.pos.z - o.a.pos.z, d = Math.hypot(dx, dz);
+      if (d < 2.2 && d > 1e-3) {
+        out.x += (dx / d) * (2.2 - d);
+        out.z += (dz / d) * (2.2 - d);
+      }
+    }
+    return out;
   }
 
   // The moment the blow lands: it connects only if Bunica is within reach, in front of the aim, on
