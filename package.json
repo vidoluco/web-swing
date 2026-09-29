@@ -1,0 +1,26 @@
+{
+  "name": "web-swing",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node tools/serve.mjs",
+    "play": "node build.mjs && node tools/serve.mjs 5178 --open"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.63.0",
+    "three": "^0.186.1"
+  },
+  "private": true,
+  "dependencies": {
+    "3d-tiles-renderer": "^0.5.3",
+    "n8ao": "^2.0.1",
+    "postprocessing": "^6.39.5",
+    "three-mesh-bvh": "^0.9.15"
+  }
+}

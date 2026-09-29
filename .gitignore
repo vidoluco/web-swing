@@ -1,0 +1,9 @@
+node_modules/
+dist/
+data/
+shots/
+.DS_Store
+# personal API keys (Google tiles, Sketchfab, Hugging Face): never committed
+.*-key
+*.key
+.env*

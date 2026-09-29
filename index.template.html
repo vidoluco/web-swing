@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web Swing · București</title>
+<style>
+  :root { --ink: #f5f7fa; --accent: #e23636; }
+  html, body { margin: 0; height: 100%; background: #0b0f14; overflow: hidden; font-family: "Helvetica Neue", system-ui, sans-serif; color: var(--ink); }
+  #game { display: block; width: 100vw; height: 100vh; }
+  .hidden { display: none !important; }
+  #overlay, #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(ellipse at center, rgba(10,14,20,0.55), rgba(5,8,12,0.88)); cursor: pointer; text-align: center; padding: 16px; }
+  #loading { cursor: default; background: #0b0f14; font-size: 18px; letter-spacing: 0.2em; text-transform: uppercase; }
+  #overlay-title { font-size: clamp(40px, 9vw, 96px); font-weight: 900; letter-spacing: 0.04em; margin: 0; line-height: 0.95;
+    text-shadow: 0 4px 30px rgba(226,54,54,0.45); }
+  #overlay-title span { color: var(--accent); }
+  .sub { opacity: 0.75; font-size: 15px; margin-top: -8px; }
+  #overlay-cta { background: var(--accent); color: #fff; padding: 12px 26px; border-radius: 999px; font-weight: 800; letter-spacing: 0.06em; }
+  .keys { display: grid; grid-template-columns: auto auto; gap: 6px 18px; font-size: 14px; opacity: 0.9; text-align: left; }
+  .keys b { display: inline-block; min-width: 26px; padding: 2px 8px; border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; font-weight: 700; text-align: center; margin-right: 4px; }
+  #hud { position: fixed; left: 18px; bottom: 16px; font-weight: 800; font-size: 15px; letter-spacing: 0.05em; text-shadow: 0 1px 4px #000; }
+  #mapwrap { position: fixed; right: 16px; bottom: 16px; width: 190px; border: 2px solid rgba(255,255,255,0.8); border-radius: 4px; overflow: hidden; box-shadow: 0 4px 18px rgba(0,0,0,0.4); }
+  #compass { display: block; width: 190px; height: 18px; }
+  #minimap { display: block; width: 190px; height: 150px; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,255,255,0.8); box-shadow: 0 0 4px #000; pointer-events: none; }
+  #toast { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); font-weight: 800; letter-spacing: 0.08em; padding: 8px 18px; background: rgba(0,0,0,0.55); border-radius: 6px; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #overlay .credit { font-size: 12px; opacity: 0.7; }
+  #osm { position: fixed; right: 18px; bottom: 4px; font-size: 10px; opacity: 0.75; text-shadow: 0 1px 2px #000; pointer-events: none; }
+  #say { position: fixed; left: 50%; bottom: 13%; transform: translateX(-50%); max-width: min(760px, 90vw); text-align: center; padding: 10px 18px; background: rgba(0,0,0,0.6); border-radius: 8px; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+  #say b { display: block; font-size: clamp(17px, 2.2vw, 24px); font-weight: 900; color: #ffe066; }
+  #say span { display: block; margin-top: 4px; font-size: 14px; color: #e8e8e8; font-style: italic; }
+  #say.show { opacity: 1; }
+  #hint { position: fixed; left: 50%; bottom: 5%; transform: translateX(-50%); font-weight: 800; font-size: 14px; letter-spacing: 0.05em; padding: 6px 14px; background: rgba(0,0,0,0.5); border-radius: 999px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+  #hint.show { opacity: 1; }
+  @media (max-width: 600px) { #mapwrap { width: 130px; } #compass, #minimap { width: 130px; } #minimap { height: 100px; } .keys { font-size: 12px; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud"></div>
+<div id="crosshair"></div>
+<div id="mapwrap"><canvas id="compass" width="380" height="36"></canvas><canvas id="minimap" width="380" height="300"></canvas></div>
+<div id="toast"></div>
+<div id="say"></div>
+<div id="hint"></div>
+<div id="osm">© OpenStreetMap contributors</div>
+<div id="overlay">
+  <h1 id="overlay-title">WEB<span>SWING</span></h1>
+  <div class="sub">Bucarest vera, da OpenStreetMap. Fisica del pendolo, tutto nel browser</div>
+  <div class="keys">
+    <div><b>Mouse</b> guarda</div><div><b>WASD</b> corri / sterza</div>
+    <div><b>Shift</b> o <b>click</b> tieni premuto: ragnatela</div><div><b>Spazio</b> salta, stacca con slancio</div>
+    <div><b>E</b> o <b>tasto destro</b> lancio al punto mirato</div><div><b>V</b> cambia costume</div>
+    <div><b>M</b> zoom mappa</div><div><b>R</b> torna in cima</div>
+    <div><b>F</b> ruba un’auto / scendi · <b>WASD</b> guida · <b>Spazio</b> freno a mano</div><div>Passa sopra birra e țuică davanti a bar e chioschi (punti gialli sulla mappa)</div>
+    <div><b>1–9, 0</b> vai a Unirii, Parlamento, Ateneu, Victoriei, Arcul de Triumf, Herăstrău, Sky Tower, Casa Presei, Arena Națională, Drumul Taberei</div>
+  </div>
+  <div id="overlay-cta">Clicca per giocare</div>
+  <div class="credit">Mappa © OpenStreetMap contributors (ODbL) · auto Kenney (CC0)</div>
+</div>
+<div id="loading"><div id="loading-text">Avvio…</div></div>
+<script type="module" src="game.js"></script>
+</body>
+</html>
