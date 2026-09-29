@@ -3,6 +3,11 @@ import { chromium } from 'playwright-core';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 
+// Tests must never speak out loud: the native macOS voice is reachable from headless Chromium.
+// The Web Speech API is disabled at launch and speak() is stubbed in every page.
+const _launch = chromium.launch.bind(chromium);
+chromium.launch = (o = {}) => _launch({ ...o, args: [...(o.args || []), '--disable-speech-api', '--mute-audio'] });
+
 export const PORT = +(process.env.PORT || 5199);
 export async function startServer() {
   const srv = spawn(process.execPath, ['tools/serve.mjs', String(PORT)], { stdio: ['ignore', 'pipe', 'inherit'] });
@@ -21,6 +26,7 @@ export async function launch() {
 export async function open(browser, query, errors, w = 1280, h = 720) {
   if (!/(^|&)city=/.test(query)) query = [query, 'city=bucharest'].filter(Boolean).join('&');
   const page = await browser.newPage({ viewport: { width: w, height: h } });
+  await page.addInitScript(() => { try { window.speechSynthesis.speak = () => {}; } catch {} });
   page.on('console', (m) => {
     if (['error', 'warning'].includes(m.type()) && !/GPU stall|GL Driver/.test(m.text())) errors.push(`[${query}] ${m.type()}: ${m.text().slice(0, 300)}`);
   });
