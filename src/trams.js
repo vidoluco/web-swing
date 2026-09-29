@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { clamp } from './config.js';
+import { clamp, mulberry32 } from './config.js';
 
 // Trams on the real tram rails (the chunk data marks them `tram`; Brasov has none, so it has no
 // trams). The pieces of the loaded chunks are joined into a network of lines. A tram is two
@@ -179,6 +179,8 @@ function buildParts(onMaterial) {
 // ---------- the system ----------
 
 export function create(game) {
+  // ?living=0 switches the living city off, for tests of the layers below it.
+  if (game.params.get('living') === '0') return { name: 'trams' };
   const trams = [];
   const stats = { spawned: 0, stops: 0, bells: 0, reversals: 0, rides: 0 };
   const scene = new THREE.Group();
@@ -189,7 +191,8 @@ export function create(game) {
   let riding = null;
   let boardT = -99;
   let cap = MAX;
-  let rng = Math.random;
+  // Own random stream, so the shared game.rng stays as it is for the tests (and the other systems).
+  const rng = mulberry32((+game.params.get('seed') || 20260929) + 102);
   let nextId = 1;
   const P = {};
 
@@ -594,7 +597,6 @@ export function create(game) {
   // ---------- the system ----------
 
   function init() {
-    rng = game.rng || Math.random;
     cap = game.params.has('lowq') ? 2 : MAX;
   }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mulberry32 } from './config.js';
 
 // Flocks of pigeons on the big squares (Piata Unirii and Universitate in Bucharest, Piata Sfatului
 // in Brasov). On the ground they peck; when Bunica comes close they lift off in a swirl, circle above
@@ -55,11 +56,14 @@ function geometry() {
 }
 
 export function create(game) {
+  // ?living=0 switches the living city off, for tests of the layers below it.
+  if (game.params.get('living') === '0') return { name: 'pigeons' };
   const flocks = [];
   const stats = { lifts: 0, landings: 0, draws: 0 };
   const group = new THREE.Group();
   let A = null;
-  let rng = Math.random;
+  // Own random stream, so the shared game.rng stays as it is for the tests (and the other systems).
+  const rng = mulberry32((+game.params.get('seed') || 20260929) + 104);
   let voiceT = -99;
   let spots = [];
   const B = new THREE.Matrix4(), M = new THREE.Matrix4(), W = new THREE.Matrix4();
@@ -188,7 +192,6 @@ export function create(game) {
 
   function init() {
     A = game.actors;
-    rng = game.rng || Math.random;
     game.scene.add(group);
   }
 

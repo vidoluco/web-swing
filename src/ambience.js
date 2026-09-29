@@ -1,4 +1,4 @@
-import { clamp } from './config.js';
+import { clamp, mulberry32 } from './config.js';
 
 // The sound of the city, all synthesised on the Web Audio context that game.sfx opens (nothing plays
 // until the first click, when the browser allows it). Positional sounds go through a panner at the
@@ -278,6 +278,8 @@ function maneleStep(ctx, dest, t, step, m) {
 // ---------- the system ----------
 
 export function create(game) {
+  // ?living=0 switches the living city off, for tests of the layers below it.
+  if (game.params.get('living') === '0') return { name: 'ambience' };
   const stats = { req: {}, played: {}, strikes: 0, hours: 0 };
   let ctx = null;
   let out = null; // the ambience bus: duck, then compressor, then the game's own master
@@ -288,7 +290,8 @@ export function create(game) {
   let manele = null; // the car that plays music
   let siren = null;
   let off = [];
-  let rng = Math.random;
+  // Own random stream, so the shared game.rng stays as it is for the tests (and the other systems).
+  const rng = mulberry32((+game.params.get('seed') || 20260929) + 105);
   let level = { traffic: 0, wind: 0, park: 0, day: 1 };
   let slowT = 0;
   let hornT = 5;
@@ -368,7 +371,7 @@ export function create(game) {
   // One sound at a place. `kind` is a key of VOICES; it is counted even when no audio is running yet.
   function play(kind, x, y, z, o = {}, delay = 0) {
     stats.req[kind] = (stats.req[kind] || 0) + 1;
-    if (!ctx || ctx.state === 'closed') return false;
+    if (!ctx || ctx.state === 'closed') return null;
     const p = panner(x, y, z, o.ref ?? 20, o.roll ?? 1.3);
     const g = ctx.createGain();
     g.gain.value = o.gain ?? 1;
@@ -384,7 +387,7 @@ export function create(game) {
       }
     }, (delay + (o.life ?? 8)) * 1000);
     stats.played[kind] = (stats.played[kind] || 0) + 1;
-    return true;
+    return p;
   }
 
   // ---------- situation ----------
@@ -530,7 +533,6 @@ export function create(game) {
   // ---------- events ----------
 
   function init() {
-    rng = game.rng || Math.random;
     const on = (name, fn) => off.push(game.events.on(name, fn));
     on('tram:bell', (e) => play('bell', e.x, e.y, e.z, { ref: 35, roll: 1.1, gain: 1.4, life: 3 }));
     on('tram:stop', (e) => play('hiss', e.x, 1.5, e.z, { ref: 20, life: 3 }, 0.6));
@@ -662,5 +664,5 @@ export function create(game) {
     ctx = null;
   }
 
-  return { name: 'ambience', init, onCityChange, update, dispose, stats, voices: VOICES, play, strike, hoursNow, churchesNear, level, state: () => ({ built: !!ctx, ctx: ctx?.state ?? null, manele: !!manele, siren: !!siren, duck: duck?.gain.value ?? null }) };
+  return { name: 'ambience', init, onCityChange, update, dispose, stats, voices: VOICES, play, strike, hoursNow, churchesNear, level, startManele, triggerSiren: () => (sirenT = 0), state: () => ({ built: !!ctx, ctx: ctx?.state ?? null, manele: !!manele, siren: !!siren, duck: duck?.gain.value ?? null, murmur: murmur?.g.gain.value ?? null, wind: wind?.g.gain.value ?? null, rumble: rumble?.g.gain.value ?? null }) };
 }

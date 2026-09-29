@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mulberry32 } from './config.js';
 
 // Stray dogs (maidanezi) in packs of two to four near parks and housing blocks, in both cities, and
 // bears in Brasov that come down to the bins of Schei and Racadau. Dogs chase Bunica barking and
@@ -25,11 +26,14 @@ const BEARS = {
 };
 
 export function create(game) {
+  // ?living=0 switches the living city off, for tests of the layers below it.
+  if (game.params.get('living') === '0') return { name: 'strays' };
   const packs = [];
   const bears = [];
   const stats = { packs: 0, chases: 0, scatters: 0, bites: 0, barks: 0, bearsSpawned: 0, bearsScared: 0, bearsAngry: 0, swipes: 0 };
   let A = null;
-  let rng = Math.random;
+  // Own random stream, so the shared game.rng stays as it is for the tests (and the other systems).
+  const rng = mulberry32((+game.params.get('seed') || 20260929) + 103);
   let off = [];
   let packT = 0;
   let bearT = 0;
@@ -352,7 +356,6 @@ export function create(game) {
 
   function init() {
     A = game.actors;
-    rng = game.rng || Math.random;
     if (!A) return;
     off.push(
       game.events.on('hit', ({ target }) => target?.pos && impact(target.pos.x, target.pos.z, target)),

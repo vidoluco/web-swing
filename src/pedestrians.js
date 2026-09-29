@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp } from './config.js';
+import { clamp, mulberry32 } from './config.js';
 
 // People on the pavements, footways and squares: up to about a hundred around Bunica, thicker in the
 // centre, the Old Town and near bars. They walk between pavement points (game.actors does the
@@ -38,13 +38,16 @@ const ARM = {
 const wrap = (a) => a - TAU * Math.floor((a + Math.PI) / TAU);
 
 export function create(game) {
+  // ?living=0 switches the living city off, for tests of the layers below it.
+  if (game.params.get('living') === '0') return { name: 'pedestrians' };
   const peds = [];
   const stats = { spawned: 0, removed: 0, roadFixes: 0, crossings: 0, waits: 0, watchers: 0, films: 0, cheers: 0, fled: 0, carHits: 0 };
   const bars = [];
   const phones = { free: [], geo: null, mats: null };
   let A = null;
   let hot = [];
-  let rng = Math.random;
+  // Own random stream, so the shared game.rng stays as it is for the tests (and the other systems).
+  const rng = mulberry32((+game.params.get('seed') || 20260929) + 101);
   let cap = MAX;
   let barsT = 0;
   let spawnT = 0;
@@ -204,6 +207,12 @@ export function create(game) {
     p.cross = null;
   }
 
+  // Walk to one end of a crossing (`near` 1: to its b end), to wait there for the cars and cross to the other.
+  function beginCross(p, c, near) {
+    p.cross = near ? { fx: c.bx, fz: c.bz, tx: c.ax, tz: c.az, mx: c.mx, mz: c.mz } : { fx: c.ax, fz: c.az, tx: c.bx, tz: c.bz, mx: c.mx, mz: c.mz };
+    goTo(p, p.cross.fx, p.cross.fz);
+  }
+
   // A new leg: sometimes to a crossing, else to a pavement point ahead that the line reaches
   // without touching a road or a building.
   function startLeg(p) {
@@ -216,9 +225,7 @@ export function create(game) {
         if (d < bd && legClear(pos.x, pos.z, near ? c.bx : c.ax, near ? c.bz : c.az)) (bd = d), (best = { c, near });
       }
       if (best) {
-        const { c, near } = best;
-        p.cross = near ? { fx: c.bx, fz: c.bz, tx: c.ax, tz: c.az, mx: c.mx, mz: c.mz } : { fx: c.ax, fz: c.az, tx: c.bx, tz: c.bz, mx: c.mx, mz: c.mz };
-        goTo(p, p.cross.fx, p.cross.fz);
+        beginCross(p, best.c, best.near);
         return;
       }
     }
@@ -470,7 +477,6 @@ export function create(game) {
 
   function init() {
     A = game.actors;
-    rng = game.rng || Math.random;
     if (!A) return;
     cap = Math.min(MAX, game.params.has('lowq') ? 36 : 100);
     // The manager holds 120 (60 low quality): raise it so people never crowd out the police and the animals.
@@ -570,5 +576,5 @@ export function create(game) {
     }
   }
 
-  return { name: 'pedestrians', init, onCityChange, update, dispose, peds, stats, density, target, crossingsNear, legClear, add, flee, beginCheer, beginWatch, beginFilm };
+  return { name: 'pedestrians', init, onCityChange, update, dispose, peds, stats, density, target, crossingsNear, legClear, add, beginCross, flee, beginCheer, beginWatch, beginFilm };
 }
