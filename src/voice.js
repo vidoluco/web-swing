@@ -33,6 +33,7 @@ export class Voice {
     this.lastN = {}; // kind -> the variant said last, so it does not repeat
     this.turn = 0; // which of the two voices speaks next
     this.current = null; // { kind, n, voice, ro, it, priority, left, audio }
+    this.lastLine = null; // the Romanian text of the line said last, still there after it ends
     this.queue = [];
     this.log = []; // the lines that started, oldest first (for tests)
     this.audio = null;
@@ -85,6 +86,7 @@ export class Voice {
     const rate = 1 - 0.15 * req.drunk;
     const secs = AUDIO?.[`${req.kind}-${req.n}`]?.[voice === 'a' ? 0 : 1] || 0;
     this.current = { kind: req.kind, n: req.n, voice, ro: req.ro, it: req.it, priority: req.priority, audio: secs > 0, rate, left: secs > 0 ? secs / rate + 0.6 : 2.2 + req.ro.length * 0.055 };
+    this.lastLine = req.ro;
     this.log.push({ kind: req.kind, n: req.n, voice, at: this.now });
     if (this.log.length > 60) this.log.shift();
     const b = document.createElement('b');

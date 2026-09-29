@@ -58,6 +58,24 @@ function makeModels() {
   handle.position.set(0.22, 0.25, 0);
   mug.add(body, glassWall, head, handle);
 
+  // The mug of a supreme bar: gold and glowing, so it reads from down the street.
+  const gold = new THREE.MeshStandardMaterial({ color: 0xf0b428, roughness: 0.25, metalness: 0.6, emissive: 0xff9a10, emissiveIntensity: 0.8 });
+  const glow = new THREE.MeshStandardMaterial({ color: 0xe88a00, roughness: 0.2, emissive: 0xff6a00, emissiveIntensity: 1.3 });
+  const supreme = new THREE.Group();
+  const sBody = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.18, 0.46, 24), glow);
+  sBody.position.y = 0.26;
+  const sBase = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.04, 24), gold);
+  sBase.position.y = 0.02;
+  const sRim = new THREE.Mesh(new THREE.TorusGeometry(0.205, 0.02, 8, 28).rotateX(Math.PI / 2), gold);
+  sRim.position.y = 0.5;
+  const sHead = new THREE.Mesh(new THREE.SphereGeometry(0.215, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), foam);
+  sHead.position.y = 0.5;
+  sHead.scale.y = 0.5;
+  const sHandle = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.035, 8, 16, Math.PI), gold);
+  sHandle.rotation.z = -Math.PI / 2;
+  sHandle.position.set(0.22, 0.27, 0);
+  supreme.add(sBody, sBase, sRim, sHead, sHandle);
+
   // Brown beer bottle for kiosks.
   const beerBottle = bottle(
     [[0, 0], [0.12, 0], [0.13, 0.02], [0.13, 0.38], [0.1, 0.46], [0.045, 0.56], [0.04, 0.72], [0.048, 0.74], [0, 0.745]],
@@ -70,7 +88,7 @@ function makeModels() {
     clearGlass, tuica, 0.62,
     { r: 0.123, h: 0.16, y: 0.24, tex: labelTexture('ȚUICĂ', '#fbf4df', '#7a1a3a') },
   );
-  return { mug, beerBottle, tuicaBottle };
+  return { mug, beerBottle, tuicaBottle, supreme };
 }
 
 // Glow on the ground and a soft beam of light, so a drink shows from down the street.
@@ -111,10 +129,15 @@ function sign(name, kind) {
     c.width = 512;
     c.height = 128;
     const g = c.getContext('2d');
-    g.fillStyle = kind === 0 ? 'rgba(90,20,10,0.88)' : 'rgba(20,40,70,0.85)';
+    g.fillStyle = kind === 2 ? 'rgba(58,8,72,0.94)' : kind === 0 ? 'rgba(90,20,10,0.88)' : 'rgba(20,40,70,0.85)';
     g.beginPath();
     g.roundRect(8, 8, 496, 112, 22);
     g.fill();
+    if (kind === 2) {
+      g.strokeStyle = '#ffd54a';
+      g.lineWidth = 6;
+      g.stroke();
+    }
     g.fillStyle = '#ffd54a';
     g.font = '900 46px system-ui, sans-serif';
     g.textAlign = 'center';
@@ -122,17 +145,23 @@ function sign(name, kind) {
     g.fillText((name || (kind === 0 ? 'Bar' : 'Non-Stop')).slice(0, 22), 256, 50);
     g.fillStyle = '#fff';
     g.font = '700 28px system-ui, sans-serif';
-    g.fillText(kind === 0 ? 'bere · țuică' : 'bere rece', 256, 96);
+    g.fillText(kind === 2 ? 'locale supremo · 100%' : kind === 0 ? 'bere · țuică' : 'bere rece', 256, 96);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
-    sp.scale.set(4, 1, 1);
+    sp.scale.set(kind === 2 ? 7 : 4, kind === 2 ? 1.75 : 1, 1);
     signs.set(key, sp);
   }
   return signs.get(key);
 }
 
+// The three supreme bars (kind 2 places, tools/extra-pois.json) and the voice line of each (lines.js supreme.<key>).
+const SUPREME = [['anagram', /anagram/i], ['hop', /hop hooligans/i], ['ironic', /ironic/i]];
+const SUPREME_R = 3.2; // metres: entering this circle at the door makes her 100% drunk
+const SUPREME_AGAIN = 45; // seconds before the same bar can do it again
+
 // Pickups around the player: bars offer a beer and a tuica, kiosks a beer. Each respawns after a while.
+// A supreme bar (kind 2) has a big golden mug, a sign and a circle at its door instead.
 export class Drinks {
   constructor(scene, city) {
     this.city = city;
@@ -144,6 +173,24 @@ export class Drinks {
     this.scanT = 0;
     this.time = 0;
     this.shownSigns = new Set();
+    this.sup = new Map(); // supreme place -> { poi, obj, mug, inside, ready }
+    this.supremeKey = null; // the bar of the last 100%, for the voice line
+    this.supremeName = null;
+  }
+
+  // The gold mug, the pink ring and beam and the sign of one supreme place, built once.
+  makeSupreme(poi) {
+    const obj = new THREE.Group();
+    const mug = this.models.supreme.clone();
+    mug.scale.setScalar(6);
+    const halo = new THREE.Group();
+    halo.add(ring(0xff3cc8));
+    halo.scale.set(3.4, 2.2, 3.4);
+    const sp = sign(poi.name, 2);
+    sp.position.y = 7.4;
+    obj.add(mug, halo, sp);
+    this.group.add(obj);
+    return { poi, obj, mug, inside: false, ready: 0 };
   }
 
   item(poi, kind, dx, dz) {
@@ -183,13 +230,24 @@ export class Drinks {
       for (const it of this.pool) (it.used = false), (it.obj.visible = false);
       for (const sp of this.shownSigns) sp.visible = false;
       this.shownSigns.clear();
-      const near = [];
+      const near = [], supreme = [];
       for (const rec of this.city.recs.values()) {
         if (rec.state !== 'loaded' || !rec.pois) continue;
         for (const p of rec.pois) {
           const d = Math.hypot(p.x - player.pos.x, p.z - player.pos.z);
-          if (d < 260) near.push([d, p]);
+          if (p.kind === 2) {
+            // Supreme places show from far away.
+            this.city.settlePoi(p);
+            if (d < 600) supreme.push(p);
+          } else if (d < 260) near.push([d, p]);
         }
+      }
+      for (const s of this.sup.values()) s.obj.visible = false;
+      for (const p of supreme) {
+        if (!this.sup.has(p)) this.sup.set(p, this.makeSupreme(p));
+        const s = this.sup.get(p);
+        s.obj.position.set(p.x, this.city.groundAt?.(p.x, p.z) ?? 0, p.z);
+        s.obj.visible = true;
       }
       near.sort((a, b) => a[0] - b[0]);
       this.list = [];
@@ -217,6 +275,21 @@ export class Drinks {
         it.obj.visible = false;
         this.lastPlace = it.poi.name;
       }
+    }
+    // A supreme circle: 100% drunk the moment she walks in, and again only after leaving it and a while.
+    for (const s of this.sup.values()) {
+      if (!s.obj.visible) continue;
+      s.mug.rotation.y = this.time * 1.1;
+      s.mug.position.y = 2.2 + Math.sin(this.time * 1.8 + s.poi.x) * 0.25;
+      const y = player.pos.y - (this.city.groundAt?.(s.poi.x, s.poi.z) ?? 0);
+      const inside = onFoot && Math.hypot(s.poi.x - player.pos.x, s.poi.z - player.pos.z) < SUPREME_R && Math.abs(y - 1) < 2.2;
+      if (inside && !s.inside && this.time >= s.ready) {
+        s.ready = this.time + SUPREME_AGAIN;
+        drank = 'supreme';
+        this.supremeName = s.poi.name;
+        this.supremeKey = SUPREME.find(([, re]) => re.test(s.poi.name))?.[0] ?? null;
+      }
+      s.inside = inside;
     }
     return drank;
   }
@@ -247,18 +320,21 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
   }
 }
 
-// Units of alcohol in the blood: a beer is 1, a tuica 2. Wears off slowly.
+// Units of alcohol in the blood: a beer is 1, a tuica 2, a supreme bar the maximum at once. Wears off slowly.
+const MAX_LEVEL = 8;
 export class Drunk {
   constructor() {
     this.level = 0;
     this.beers = 0;
     this.tuicas = 0;
+    this.supremes = 0;
     this.t = 0;
   }
   drink(kind) {
-    if (kind === 'beer') (this.level += 1), this.beers++;
+    if (kind === 'supreme') (this.level = MAX_LEVEL), this.supremes++;
+    else if (kind === 'beer') (this.level += 1), this.beers++;
     else (this.level += 2), this.tuicas++;
-    this.level = Math.min(this.level, 8);
+    this.level = Math.min(this.level, MAX_LEVEL);
   }
   update(dt) {
     this.t += dt;
@@ -280,104 +356,5 @@ export class Drunk {
   drift() {
     const a = this.amount;
     return a * (Math.sin(this.t * 1.3) * 0.45 + Math.sin(this.t * 2.9 + 0.5) * 0.25);
-  }
-}
-
-// ---------- what he says, in Romanian ----------
-
-export const LINES = {
-  steal: [
-    ['Hai, frate, că ți-o aduc înapoi... poate!', 'Dai, fratello, te la riporto... forse!'],
-    ['Scuze, șefu\', e urgență: se închide non-stopul!', 'Scusa capo, è un\'emergenza: chiude il non-stop!'],
-    ['Mașina e a lu\' văru\'. Văru\' încă nu știe.', 'L\'auto è di mio cugino. Mio cugino ancora non lo sa.'],
-    ['Stai liniștit, o parchez pe trotuar, ca tot Bucureștiul.', 'Tranquillo, la parcheggio sul marciapiede, come tutta Bucarest.'],
-    ['Merge și fără ITP, nu?', 'Va anche senza revisione, no?'],
-    ['Ia uite, are și brăduț parfumat!', 'Guarda, ha pure l\'alberello profumato!'],
-    ['Plec la mare, mă-ntorc luni!', 'Vado al mare, torno lunedì!'],
-    ['Las-o, bă, că n-o zgârii!', 'Lasciala, dai, che non la graffio!'],
-  ],
-  stealtaxi: [
-    ['Taxi! A, stai, acum eu sunt taximetristul.', 'Taxi! Ah, aspetta, adesso il tassista sono io.'],
-    ['Aparatul e stricat, facem la negru!', 'Il tassametro è rotto, facciamo in nero!'],
-  ],
-  stealpolice: [['Poliția sunt eu acum. Actele la control!', 'La polizia adesso sono io. Documenti, prego!']],
-  stealdrunk: [
-    ['Șofer desemnat? Eu. Desemnat de mine.', 'Autista designato? Io. Designato da me.'],
-    ['Văd două drumuri. Îl iau pe cel din mijloc.', 'Vedo due strade. Prendo quella in mezzo.'],
-  ],
-  beer: [
-    ['Noroc!', 'Salute!'],
-    ['Una rece, ca la mama acasă!', 'Una fresca, come a casa della mamma!'],
-    ['Bere la PET: patrimoniu național.', 'Birra nella bottiglia di plastica: patrimonio nazionale.'],
-    ['Asta e apă cu spumă, frate.', 'Questa è acqua con la schiuma, fratello.'],
-    ['Noroc și sănătate, că de bani mai vedem!', 'Fortuna e salute, per i soldi si vedrà!'],
-    ['Încă una și plec la Vama Veche!', 'Un\'altra e parto per Vama Veche!'],
-  ],
-  tuica: [
-    ['Țuică de la bunica, curată ca lacrima!', 'Țuică della nonna, limpida come una lacrima!'],
-    ['Ooof, arde până-n suflet!', 'Ooof, brucia fino all\'anima!'],
-    ['Asta nu e băutură, e medicament!', 'Questa non è una bevanda, è una medicina!'],
-    ['Parcă văd două Case ale Poporului...', 'Mi sembra di vedere due Case del Popolo...'],
-    ['Hai noroc, să trăiască Bucureștiul!', 'Salute, viva Bucarest!'],
-    ['Bunicul zicea: o țuică dimineața și n-ai nevoie de doctor.', 'Il nonno diceva: una țuică al mattino e il medico non serve.'],
-  ],
-  wasted: [
-    ['Te iubesc, frate... pe tine și pe toată lumea!', 'Ti voglio bene, fratello... a te e a tutto il mondo!'],
-    ['Unde mi-e mașina? Care mașină?', 'Dov\'è la mia macchina? Quale macchina?'],
-    ['Pământul se mișcă. Sigur e cutremur.', 'La terra si muove. Sicuro è un terremoto.'],
-  ],
-  crash: [
-    ['Nu-i nimic, se rezolvă cu o bere la tinichigiu.', 'Non è niente, si risolve con una birra dal carrozziere.'],
-    ['Cine a pus blocul ăsta aici?!', 'Chi ha messo questo palazzo qui?!'],
-  ],
-  sunk: [['Am parcat în lac. Tot e mai bine decât în Centrul Vechi.', 'Ho parcheggiato nel lago. Sempre meglio che nel Centro Storico.']],
-};
-
-// Subtitle (Romanian, with the Italian underneath) and a Romanian system voice, slurred when drunk.
-export class Voice {
-  constructor(el) {
-    this.el = el;
-    this.t = 0;
-    this.last = {};
-    this.lastLine = null;
-    this.voice = null;
-    const pick = () => {
-      const vs = window.speechSynthesis?.getVoices() || [];
-      this.voice = vs.find((v) => /^ro/i.test(v.lang)) || null;
-    };
-    pick();
-    window.speechSynthesis?.addEventListener?.('voiceschanged', pick);
-  }
-
-  say(kind, drunk = 0) {
-    const list = LINES[kind];
-    if (!list) return;
-    let i = Math.floor(Math.random() * list.length);
-    if (list.length > 1 && i === this.last[kind]) i = (i + 1) % list.length;
-    this.last[kind] = i;
-    const [ro, it] = list[i];
-    this.lastLine = ro;
-    this.el.replaceChildren();
-    const b = document.createElement('b');
-    b.textContent = ro;
-    const s = document.createElement('span');
-    s.textContent = it;
-    this.el.append(b, s);
-    this.el.classList.add('show');
-    this.t = 2.2 + ro.length * 0.055;
-    const synth = window.speechSynthesis;
-    if (synth && window.SpeechSynthesisUtterance) {
-      synth.cancel();
-      const u = new SpeechSynthesisUtterance(ro);
-      u.lang = 'ro-RO';
-      if (this.voice) u.voice = this.voice;
-      u.rate = Math.max(0.62, 1.05 - drunk * 0.4);
-      u.pitch = Math.max(0.6, 1 - drunk * 0.35);
-      synth.speak(u);
-    }
-  }
-
-  update(dt) {
-    if (this.t > 0 && (this.t -= dt) <= 0) this.el.classList.remove('show');
   }
 }

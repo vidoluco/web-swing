@@ -521,7 +521,7 @@ for (const g of greens) {
 // Each needs a street that exists in the input and sources on two different sites, otherwise the build stops,
 // so a place whose address is not confirmed cannot get in. An OSM place of the same name within 30 m is replaced.
 {
-  const file = new URL('./extra-pois.json', import.meta.url);
+  const file = process.env.EXTRA_POIS || new URL('./extra-pois.json', import.meta.url); // EXTRA_POIS: another file, for tests
   const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const host = (s) => new URL(s.url).hostname.replace(/^(www|amp)\./, '');
   for (const p of (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8'))[outName]?.places : null) || []) {

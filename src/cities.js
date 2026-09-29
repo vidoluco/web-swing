@@ -1,6 +1,6 @@
 // Per-city configuration, keyed by the folder under public/city/. Coordinates are metres from the
 // city origin (index.json "origin"): x east, z south.
-//   spots      name and position of the places on the number keys 1 to 9 and 0
+//   spots      name and position of the places on the number keys 1 to 9 and 0, then Alt + 1 to 9 and 0 for the ones after the tenth
 //   waypoints  route of the ?demo autopilot
 //   spawnFacing  the start roof is chosen on the side of this point, looking at it
 //   image      screenshot on the map selection card
@@ -21,6 +21,10 @@ const bucharest = {
     ['Casa Presei Libere', -2498, -6021],
     ['Arena Națională', 3972, -1151],
     ['Drumul Taberei', -5643, 739],
+    // The supreme bars, on Alt + 1 to 3 (coordinates: tools/extra-pois.json).
+    ['Anagram', -5220, -3527.7],
+    ['Hop Hooligans', 158.5, -1519.3],
+    ['Ironic Taproom', -590.5, -795.4],
   ],
   // Palace of Parliament, Cismigiu, Universitate, Piata Unirii.
   waypoints: [[-1150, -60], [-860, -1150], [0, -960], [30, 0]],
