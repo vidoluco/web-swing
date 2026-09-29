@@ -228,12 +228,12 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
   vec3 wall;
   if (ki == 1) wall = wt.rgb * mix(vec3(1.0), base / 0.5, 0.2);
   else if (ki == 0) wall = wt.rgb * base * 0.6;
-  else wall = mix(vec3(dot(wt.rgb, vec3(0.333))), wt.rgb, 0.5) * base * 1.6;
+  else wall = mix(vec3(dot(wt.rgb, vec3(0.333))), wt.rgb, 0.32) * base * 1.6;
   float rough = wt.a;
   float metal = 0.0;
   vec3 emit = vec3(0.0);
   float ao = 1.0;
-  gNrm = tn; gNrmK = 0.6;
+  gNrm = tn; gNrmK = 0.45;
   // dirt: darker near the ground, streaks, stains
   float gy = smoothstep(0.0, 9.0, ly);
   float streak = vnoise(vec2(u * 1.7, y * 0.06) + seed);

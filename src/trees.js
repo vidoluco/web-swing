@@ -119,11 +119,17 @@ function makeAtlas(leaf, bark) {
   g.fillStyle = '#7d6a58';
   g.fillRect(0, 4 * CELL, CELL, CELL);
   if (bark) {
-    g.filter = 'saturate(0.3) brightness(1.15)';
     g.drawImage(bark, 0, 4 * CELL, CELL, CELL);
-    g.filter = 'none';
-    g.fillStyle = 'rgba(130,110,90,0.28)';
-    g.fillRect(0, 4 * CELL, CELL, CELL);
+    // desaturate towards a grey-brown and lift it, so trunks do not read as red or black
+    const im = g.getImageData(0, 4 * CELL, CELL, CELL);
+    const d = im.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const gr = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+      d[i] = Math.min(255, (gr * 0.75 + d[i] * 0.25) * 1.5 + 30);
+      d[i + 1] = Math.min(255, (gr * 0.75 + d[i + 1] * 0.25) * 1.2 + 16);
+      d[i + 2] = Math.min(255, (gr * 0.75 + d[i + 2] * 0.25) * 0.85 + 6);
+    }
+    g.putImageData(im, 0, 4 * CELL);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -321,7 +327,7 @@ varying float vPart;`
         )
         .replace(
           '#include <color_vertex>',
-          THREE.ShaderChunk.color_vertex.replace('vColor.xyz *= instanceColor.xyz;', 'vColor.xyz *= instanceColor.r; if (aPart < 0.5) vMapUv.y -= floor(instanceColor.g * 2.0 + 0.5) / ${ROWS}.0;') + '\nvPart = aPart;'
+          THREE.ShaderChunk.color_vertex.replace('vColor.rgb *= instanceColor.rgb;', `vColor.rgb *= instanceColor.r; if (aPart < 0.5) vMapUv.y -= floor(instanceColor.g * 2.0 + 0.5) / ${ROWS}.0;`) + '\nvPart = aPart;'
         )
         .replace(
           '#include <begin_vertex>',

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { h32, rnd01 } from './buildings.js';
 import { pointInPrism2D, closestOnPrism, roadKey } from './osmcity.js';
 import { uniforms } from './uniforms.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { box, cyl, merge, propMaterial, partsOf, fillInstances } from './geom.js';
 
 // Street furniture and roof clutter of a chunk: lamp posts, benches, bins, cabinets, bus shelters, kiosks and bar
@@ -231,6 +232,23 @@ if (wear < 0.5) discard;
     this.zebraMat = paint(true);
     this.stopMat = paint(false);
     this.paintGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    // Manhole covers: dark cast iron discs with a ring
+    const hole = new THREE.CylinderGeometry(0.34, 0.34, 0.03, 20);
+    this.holeGeo = hole;
+    this.holeMat = new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.45, metalness: 0.75, polygonOffset: true, polygonOffsetFactor: -11, polygonOffsetUnits: -11 });
+    // Parked cars: the Kenney models the traffic uses, one merged geometry per type
+    this.cars = (this.assets.cars || []).map((holder) => {
+      const parts = partsOf(holder);
+      if (!parts.length) return null;
+      const mat = parts[0].material;
+      const geos = parts.map((p) => {
+        const g = p.geometry;
+        for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+        return g.index ? g.toNonIndexed() : g;
+      });
+      const geo = mergeGeometries(geos);
+      return geo ? { geo, mat, dims: holder.userData.dims } : null;
+    }).filter(Boolean);
     // Signs: names of bars and kiosks from OSM painted on a shared atlas, drawn unlit and glowing at night.
     this.signs = new SignAtlas();
     this.signGeo = new THREE.PlaneGeometry(1, 0.3);
@@ -290,7 +308,7 @@ if (wear < 0.5) discard;
   }
 
   newLists() {
-    return { lamp: [], oldLamp: [], bench: [], bin: [], boxA: [], boxB: [], shelter: [], kiosk: [], table: [], chalk: [], planter: [], plant: [], zebra: [], stop: [], halo: [], pool: [], sign: [] };
+    return { lamp: [], oldLamp: [], bench: [], bin: [], boxA: [], boxB: [], shelter: [], kiosk: [], table: [], chalk: [], planter: [], plant: [], zebra: [], stop: [], halo: [], pool: [], sign: [], hole: [], car: [] };
   }
 
   lineLen(pts) {
@@ -364,6 +382,24 @@ if (wear < 0.5) discard;
     modelInst('standing_chalkboard_01', L.chalk);
     modelInst('planter_box_01', L.planter);
     modelInst('potted_plant_02', L.plant);
+    put(this.inst(this.holeGeo, this.holeMat, L.hole));
+    if (this.cars.length) {
+      const buckets = this.cars.map(() => []);
+      for (const c of L.car) buckets[c[2] % this.cars.length].push([c[0], c[1]]);
+      buckets.forEach((list, i) => {
+        if (!list.length) return;
+        const m = new THREE.InstancedMesh(this.cars[i].geo, this.cars[i].mat, list.length);
+        const col = new THREE.Color();
+        list.forEach(([mm, v], k) => {
+          m.instanceMatrix.array.set(mm, k * 16);
+          m.setColorAt(k, col.setRGB(v, v, v, THREE.LinearSRGBColorSpace));
+        });
+        m.instanceMatrix.needsUpdate = true;
+        m.instanceColor.needsUpdate = true;
+        m.computeBoundingSphere();
+        put(m);
+      });
+    }
     put(this.roofs(rec));
     if (L.sign.length) {
       const m = new THREE.InstancedMesh(this.signGeo, this.signMat, L.sign.length);
@@ -434,6 +470,29 @@ if (wear < 0.5) discard;
     });
     // bus shelters on the bigger streets, cabinets and bins on the pavement (near layer)
     if (!near) return;
+    // manholes along the lanes
+    this.walk(pts, 46, 10 + rnd01(seed, 30) * 30, (x, z, dx, dz, u) => {
+      if (u > len - 8) return;
+      const lat = (rnd01(seed, 31 + Math.floor(u)) - 0.5) * w * 0.7;
+      L.hole.push([mat4(x - dz * lat, city.groundAt(x, z) + 0.045, z + dx * lat, 0, 1)]);
+    });
+    // cars parked on the pavement beside the kerb, half of them nose to tail with a gap
+    if (w <= 13 && this.cars.length) {
+      const dens = major ? 0.2 : 0.34;
+      for (const side of [-1, 1]) {
+        this.walk(pts, 6.4, 8 + rnd01(seed, 40 + side) * 3, (x, z, dx, dz, u) => {
+          if (u > len - 12) return;
+          const key = Math.floor(u / 6.4) * 3 + side;
+          if (rnd01(seed, 100 + key) > dens) return;
+          const off = half + (major ? 1.5 : 1.2);
+          const px = x - dz * side * off, pz = z + dx * side * off;
+          if (!this.free(px, pz, 1.4)) return;
+          const kind = Math.floor(rnd01(seed, 200 + key) * 5);
+          const flip = rnd01(seed, 300 + key) < 0.5 ? 0 : Math.PI;
+          L.car.push([mat4(px, city.groundAt(px, pz), pz, Math.atan2(dx, dz) + flip, 1), 0.72 + rnd01(seed, 400 + key) * 0.45, kind]);
+        });
+      }
+    }
     if (major && len > 70 && rnd01(seed, 2) < 0.5) {
       const u0 = len * (0.35 + 0.3 * rnd01(seed, 3));
       this.walk(pts, len, u0, (x, z, dx, dz) => {

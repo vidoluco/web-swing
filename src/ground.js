@@ -225,12 +225,52 @@ void groundShade(inout vec4 dc) {
 }
 `;
 
+// The wide plane under everything. Same uniform contract as materials2.js surfaceMaterial('ground'): OsmCity.load
+// fills userData.city (tCity, uCityBox, uHasCity) with the land use map that shows beyond the streamed chunks.
+const PLANE = /* glsl */ `
+uniform sampler2D tCity; uniform vec4 uCityBox; uniform vec2 uCamXZ; uniform float uHasCity;
+void groundShade(inout vec4 dc) {
+  vec2 p = vWPos.xz;
+  vec2 n, n2, n3;
+  // between the blocks: lawns worn to earth, patches of old paving
+  vec4 g = gndSample(6.0, p, 1.9, n);
+  vec4 g2 = gndSample(7.0, p, 1.5, n2);
+  vec3 grass = mix(g.rgb, g2.rgb, smoothstep(0.35, 0.65, fbm(p * 0.02 + 5.0)));
+  float dry = smoothstep(0.5, 0.78, fbm(p * 0.03 + 11.0));
+  grass = mix(grass, grass * vec3(1.35, 1.15, 0.55), dry * 0.5);
+  vec4 d = gndSample(8.0, p, 2.0, n3);
+  float bare = smoothstep(0.58, 0.8, fbm(p * 0.05 + 2.0));
+  vec3 col = mix(grass, d.rgb * 0.85, bare * 0.7);
+  vec2 n4;
+  vec4 pv = gndSample(2.0, p, 2.6, n4);
+  float paved = smoothstep(0.56, 0.66, fbm(p * 0.012 + 8.0));
+  col = mix(col, pv.rgb * 0.8, paved);
+  vec2 nn = mix(mix(n, n2, 0.5), n3, bare * 0.7);
+  nn = mix(nn, n4, paved);
+  col *= 0.82 + 0.3 * vnoise(p * 0.5);
+  if (uHasCity > 0.5) {
+    vec2 cuv = (p - uCityBox.xy) / (uCityBox.zw - uCityBox.xy);
+    bool outside = cuv.x < 0.0 || cuv.x > 1.0 || cuv.y < 0.0 || cuv.y > 1.0;
+    vec3 cm = outside ? vec3(0.25, 0.27, 0.12) : texture2D(tCity, cuv).rgb;
+    float grey = 1.0 - smoothstep(0.015, 0.05, max(cm.r, max(cm.g, cm.b)) - min(cm.r, min(cm.g, cm.b)));
+    vec3 far = mix(cm * (0.9 + 0.2 * vnoise(p * 0.05)), col * vec3(0.9, 1.0, 0.8), grey * 0.7);
+    float f = smoothstep(1500.0, 1900.0, distance(p, uCamXZ));
+    col = mix(col, far, f);
+    nn *= 1.0 - f;
+  }
+  dc.rgb = col;
+  gRough = 0.95;
+  gNrm = nn; gNrmK = 0.8;
+}
+`;
+
 function groundMaterial(assets, body, off, key, extra = {}) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: off, polygonOffsetUnits: off });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.tGndA = { value: assets.ground.albedo };
     shader.uniforms.tGndN = { value: assets.ground.normal };
     shader.uniforms.uNight = uniforms.uNight;
+    if (extra.cityUniforms) Object.assign(shader.uniforms, extra.cityUniforms);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 aRoad; attribute vec2 aDir; varying vec3 vWPos; varying vec2 vUv; varying vec4 vRoad; varying vec2 vDir;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vUv = uv; vRoad = aRoad; vDir = aDir;');
@@ -251,12 +291,15 @@ function groundMaterial(assets, body, off, key, extra = {}) {
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += gEmit;');
   };
   mat.customProgramCacheKey = () => 'ground-' + key;
-  Object.assign(mat, extra);
   return mat;
 }
 
 export function groundMaterials(assets) {
+  const cityUniforms = { tCity: { value: null }, uCityBox: { value: new THREE.Vector4() }, uCamXZ: { value: new THREE.Vector2() }, uHasCity: { value: 0 } };
+  const plane = groundMaterial(assets, PLANE, 0, 'plane', { cityUniforms });
+  plane.userData.city = cityUniforms;
   return {
+    plane,
     road: groundMaterial(assets, ROAD, -6, 'road'),
     sidewalk: groundMaterial(assets, SIDEWALK, -4, 'sidewalk'),
     path: groundMaterial(assets, PATH, -5, 'path'),

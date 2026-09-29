@@ -101,8 +101,8 @@ function obb(r) {
 // centre of the footprint; bits go into the variant (4096 palace, 8192 blackened stone, 16384 white tower).
 const MARKS = {
   bucharest: [
-    { x: -1190, z: -70, r: 140, minArea: 3000, kind: KIND.MONUMENT, colour: '#e6dcc4', bits: 4096 }, // Palace of the Parliament
-    { x: -1148, z: -67, r: 60, minArea: 2000, kind: KIND.MONUMENT, colour: '#e6dcc4', bits: 4096 },
+    { x: -1190, z: -70, r: 140, minArea: 3000, kind: KIND.MONUMENT, colour: '#f0e0bc', bits: 4096 }, // Palace of the Parliament
+    { x: -1148, z: -67, r: 60, minArea: 2000, kind: KIND.MONUMENT, colour: '#f0e0bc', bits: 4096 },
   ],
   brasov: [
     { x: -42, z: 187, r: 45, minArea: 300, kind: KIND.MONUMENT, colour: '#5b5854', bits: 8192 }, // Black Church

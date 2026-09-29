@@ -23,6 +23,8 @@ export class CityLook {
     this.detailT = 0;
     this.uniforms = uniforms; // reachable for tests
     const m = groundMaterials(assets);
+    // The wide ground plane too, unless the terrain has taken it over (?oldground keeps the previous one).
+    if (!city.scene.userData.terrain && !new URLSearchParams(location.search).has('oldground')) city.mats.ground = m.plane;
     Object.assign(city.mats, { road: m.road, sidewalk: m.sidewalk, path: m.path, plaza: m.plaza, grass: m.grass, railBed: m.railBed, rail: m.rail });
   }
 

@@ -13,6 +13,8 @@ export const VIEWS = {
   bar: { city: 'bucharest', pos: [-226, 0, -521], at: [-213, -518], pitch: 0.16, dist: 5 },
   kiosk: { city: 'bucharest', pos: [-197, 0, -410], at: [-204, -423], pitch: 0.16, dist: 5 },
   palace: { city: 'bucharest', pos: [-1010, 0, -62], at: [-1190, -70], pitch: 0.2, dist: 10 },
+  palace2: { city: 'bucharest', pos: [-1110, 0, -66], at: [-1190, -70], pitch: 0.3, dist: 8 },
+  cars: { city: 'bucharest', pos: [-100, 0, -612], at: [-30, -626], pitch: 0.14, dist: 6 },
   swing: { city: 'bucharest', swing: true },
   roof: { city: 'bucharest', roof: true },
   brasov: { city: 'brasov', pos: [30.9, null, 60.1], at: [327, 943], pitch: 0.05, dist: 6 },
@@ -20,7 +22,7 @@ export const VIEWS = {
 };
 
 // A rough terrain mesh for Brasov, injected only for screenshots.
-const TERRAIN = async () => {
+export const TERRAIN = async () => {
   const g = window.__game;
   const idx = await fetch('city/brasov/index.json').then((r) => r.json());
   const d = idx.dem;

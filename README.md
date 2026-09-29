@@ -88,3 +88,6 @@ cd ../.. && node --max-old-space-size=12000 tools/osm-build.mjs bucharest data/p
 | Cars | Kenney Car Kit, CC0 |
 | Hero | Mixamo X Bot, from the three.js examples |
 | Textures | ambientCG, CC0; water normals from the three.js examples |
+| Facade, street, roof and bark textures | ambientCG (Lennart Demes), CC0, 21 sets, listed in `assets/CREDITS.md` |
+| Street furniture models | Poly Haven, CC0, 13 models by their authors, listed in `assets/CREDITS.md` |
+| Parked cars | Kenney Car Kit, CC0 |
