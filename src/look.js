@@ -4,6 +4,7 @@ import { Streets } from './streets.js';
 import { Trees } from './trees.js';
 import { Detail } from './detail.js';
 import { Props } from './props.js';
+import { uniforms } from './uniforms.js';
 
 const DETAIL_ON = 200, DETAIL_OFF = 300, SHADOW_R = 260, TREE_FAR = 330; // metres from the camera to the chunk square // metres from the camera to the chunk square
 
@@ -20,6 +21,7 @@ export class CityLook {
     this.detail = new Detail(this);
     this.props = new Props(this);
     this.detailT = 0;
+    this.uniforms = uniforms; // reachable for tests
     const m = groundMaterials(assets);
     Object.assign(city.mats, { road: m.road, sidewalk: m.sidewalk, path: m.path, plaza: m.plaza, grass: m.grass, railBed: m.railBed, rail: m.rail });
   }
@@ -100,12 +102,24 @@ export class CityLook {
     }
   }
 
+  // The chunk record is about to be reused: its meshes are gone.
+  forget(rec) {
+    rec.detailGroup = undefined;
+    rec.shadowOn = undefined;
+    rec.treesNear = undefined;
+    rec.lookRoads = null;
+  }
+
   dropDetail(rec) {
     const g = rec.detailGroup;
     rec.detailGroup = null;
     if (!g) return; // false: the chunk had no detail
     rec.group?.remove(g);
-    g.traverse((o) => o.isInstancedMesh && o.dispose());
+    g.traverse((o) => {
+      if (!o.isInstancedMesh) return;
+      o.dispose();
+      if (o.userData.ownGeometry) o.geometry.dispose();
+    });
   }
 
   buildLines(list) {

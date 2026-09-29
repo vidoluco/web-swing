@@ -278,10 +278,13 @@ export class OsmCity {
     if (g) {
       this.scene.remove(g);
       g.traverse((o) => {
-        if (o.isInstancedMesh) o.dispose();
-        else if (o.isMesh && !o.userData.sharedGeo) o.geometry.dispose();
+        if (o.isInstancedMesh) {
+          o.dispose();
+          if (o.userData.ownGeometry) o.geometry.dispose(); // look-city:
+        } else if (o.isMesh && !o.userData.sharedGeo) o.geometry.dispose();
       });
     }
+    this.look?.forget(rec); // look-city: detail layer state of the record
     const gone = new Set(rec.prisms);
     for (const p of rec.prisms) {
       for (let gx = Math.floor(p.minx / CELL); gx <= Math.floor(p.maxx / CELL); gx++) {

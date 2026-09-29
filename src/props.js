@@ -112,6 +112,52 @@ function glowTexture(size = 128) {
   return t;
 }
 
+class SignAtlas {
+  static COLS = 4;
+  static ROWS = 16;
+  constructor() {
+    const c = document.createElement('canvas');
+    c.width = 512 * SignAtlas.COLS;
+    c.height = 128 * SignAtlas.ROWS;
+    this.canvas = c;
+    this.g = c.getContext('2d');
+    this.g.fillStyle = '#222';
+    this.g.fillRect(0, 0, c.width, c.height);
+    this.tex = new THREE.CanvasTexture(c);
+    this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.tex.anisotropy = 4;
+    this.cells = new Map();
+    this.next = 0;
+  }
+  // Cell index of a name, painting it on first use. The atlas is a ring: the oldest names are overwritten.
+  cell(name) {
+    let i = this.cells.get(name);
+    if (i !== undefined) return i;
+    i = this.next++ % (SignAtlas.COLS * SignAtlas.ROWS);
+    for (const [k, v] of this.cells) if (v === i) this.cells.delete(k);
+    this.cells.set(name, i);
+    const h = h32([...name].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7));
+    const pal = [['#7a1f1f', '#fff1d6'], ['#12324f', '#ffe08a'], ['#1d4d2b', '#f5f5e6'], ['#2b2b2e', '#ffcf4a'], ['#f3ead0', '#5b1a1a'], ['#5c2a63', '#ffffff']][h % 6];
+    const x = (i % SignAtlas.COLS) * 512, y = Math.floor(i / SignAtlas.COLS) * 128;
+    const g = this.g;
+    g.fillStyle = pal[0];
+    g.fillRect(x, y, 512, 128);
+    g.strokeStyle = pal[1];
+    g.lineWidth = 5;
+    g.strokeRect(x + 6, y + 6, 500, 116);
+    g.fillStyle = pal[1];
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    let size = 64;
+    g.font = `800 ${size}px "Helvetica Neue", Arial, sans-serif`;
+    const text = name.length > 26 ? name.slice(0, 25) + '.' : name;
+    while (g.measureText(text).width > 470 && size > 22) g.font = `800 ${(size -= 4)}px "Helvetica Neue", Arial, sans-serif`;
+    g.fillText(text, x + 256, y + 68);
+    this.tex.needsUpdate = true;
+    return i;
+  }
+}
+
 export class Props {
   constructor(look) {
     this.look = look;
@@ -158,7 +204,7 @@ export class Props {
         void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
         uniform sampler2D tGlow; uniform float uNight; varying vec2 vUv;
-        void main() { gl_FragColor = vec4(texture2D(tGlow, vUv).rgb * uNight * 0.32, 1.0); }`,
+        void main() { float d = clamp(length(vUv - 0.5) * 2.0, 0.0, 1.0); float a = pow(1.0 - d, 2.6); gl_FragColor = vec4(vec3(1.0, 0.8, 0.5) * a * uNight * 0.2, 1.0); }`,
       fog: false,
     });
     this.poolGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
@@ -185,6 +231,28 @@ if (wear < 0.5) discard;
     this.zebraMat = paint(true);
     this.stopMat = paint(false);
     this.paintGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    // Signs: names of bars and kiosks from OSM painted on a shared atlas, drawn unlit and glowing at night.
+    this.signs = new SignAtlas();
+    this.signGeo = new THREE.PlaneGeometry(1, 0.3);
+    this.signMat = new THREE.ShaderMaterial({
+      uniforms: { tSigns: { value: this.signs.tex }, uNight: uniforms.uNight },
+      side: THREE.DoubleSide,
+      vertexShader: `
+        attribute float aCell; varying vec2 vUv;
+        void main() {
+          float cx = mod(aCell, ${SignAtlas.COLS}.0), cy = floor(aCell / ${SignAtlas.COLS}.0);
+          vUv = vec2((cx + uv.x) / ${SignAtlas.COLS}.0, 1.0 - (cy + 1.0 - uv.y) / ${SignAtlas.ROWS}.0);
+          gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        uniform sampler2D tSigns; uniform float uNight; varying vec2 vUv;
+        void main() {
+          vec4 c = texture2D(tSigns, vUv);
+          vec3 lit = c.rgb * (0.85 + 1.2 * uNight);
+          gl_FragColor = vec4(lit, 1.0);
+          #include <colorspace_fragment>
+        }`,
+    });
   }
 
   model(name) {
@@ -222,7 +290,7 @@ if (wear < 0.5) discard;
   }
 
   newLists() {
-    return { lamp: [], oldLamp: [], bench: [], bin: [], boxA: [], boxB: [], shelter: [], kiosk: [], table: [], chalk: [], planter: [], plant: [], zebra: [], stop: [], halo: [], pool: [] };
+    return { lamp: [], oldLamp: [], bench: [], bin: [], boxA: [], boxB: [], shelter: [], kiosk: [], table: [], chalk: [], planter: [], plant: [], zebra: [], stop: [], halo: [], pool: [], sign: [] };
   }
 
   lineLen(pts) {
@@ -297,6 +365,20 @@ if (wear < 0.5) discard;
     modelInst('planter_box_01', L.planter);
     modelInst('potted_plant_02', L.plant);
     put(this.roofs(rec));
+    if (L.sign.length) {
+      const m = new THREE.InstancedMesh(this.signGeo, this.signMat, L.sign.length);
+      const cells = new Float32Array(L.sign.length);
+      L.sign.forEach(([mm, cell], k) => {
+        m.instanceMatrix.array.set(mm, k * 16);
+        cells[k] = cell;
+      });
+      m.geometry = this.signGeo.clone();
+      m.geometry.setAttribute('aCell', new THREE.InstancedBufferAttribute(cells, 1));
+      m.instanceMatrix.needsUpdate = true;
+      m.frustumCulled = false;
+      m.userData.ownGeometry = true;
+      out.push(m);
+    }
     return out;
   }
 
@@ -410,7 +492,9 @@ if (wear < 0.5) discard;
       if (p.kind === 1) {
         const kx = p.x + p.nx * 2.2, kz = p.z + p.nz * 2.2;
         if (!this.free(kx, kz, 2)) continue;
-        L.kiosk.push([mat4(kx, city.groundAt(kx, kz), kz, yaw), [0xffffff, 0xd94a4a, 0x2f7d4f, 0x3d6fb5, 0xf0c040, 0xd9d9d0][h % 6]]);
+        const ky = city.groundAt(kx, kz);
+        L.kiosk.push([mat4(kx, ky, kz, yaw), [0xffffff, 0xd94a4a, 0x2f7d4f, 0x3d6fb5, 0xf0c040, 0xd9d9d0][h % 6]]);
+        L.sign.push([mat4(kx + p.nx * 1.31, ky + 2.78, kz + p.nz * 1.31, yaw, 1.7, 1, 1), this.signs.cell((p.name || 'NON-STOP').toUpperCase())]);
       } else {
         // a terrace: two table sets beside the door and a chalkboard
         for (let i = 0; i < 2; i++) {
@@ -420,6 +504,11 @@ if (wear < 0.5) discard;
           const y = city.groundAt(x, z);
           L.table.push([mat4(x, y, z, yaw + (h >> (i + 2) & 3) * 1.57)]);
           L.table.push([mat4(x, y, z, yaw + Math.PI + (h >> (i + 2) & 3) * 1.57)]);
+        }
+        // a blade sign on the wall, above the door
+        if (p.name) {
+          const wx = p.x - p.nx * 1.75, wz = p.z - p.nz * 1.75, wy = city.groundAt(wx, wz) + 3.1;
+          L.sign.push([mat4(wx + p.nx * 0.9 + tx * 0.6, wy, wz + p.nz * 0.9 + tz * 0.6, yaw + Math.PI / 2, 1.4, 1.4, 1), this.signs.cell(p.name.toUpperCase())]);
         }
         const cx = p.x + tx * 1.8 + p.nx * 0.6, cz = p.z + tz * 1.8 + p.nz * 0.6;
         if (this.free(cx, cz, 0.6)) L.chalk.push([mat4(cx, city.groundAt(cx, cz), cz, yaw, 1)]);

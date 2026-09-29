@@ -7,6 +7,7 @@ import { box, merge, propMaterial, fillInstances } from './geom.js';
 // leaves (see CityLook.update). Positions follow the bays the facade shader lays out (buildings.js layout()).
 
 const PVC = [0xf2f2ee, 0xf2f2ee, 0xe9e6dc, 0x5b3a26, 0x2b2d30, 0xa9adb0, 0x8a5a3a, 0xdcdcd6];
+const PANEL_TINT = [0xd0ccbf, 0xc8c2a8, 0xb9c4b0, 0xc9b9a0, 0xdadad4, 0xb7c2c9];
 const CLOTH = [0xd94a4a, 0x3d6fb5, 0xf0e2b0, 0xe8e8e8, 0x4f9a5a, 0xe79a2e, 0x8b5aa8, 0xf2b5c0];
 const AWNING = [0xb32626, 0x1f5e3d, 0x1e4b8a, 0xe0d2a8, 0x7a2b52, 0xc9791c];
 
@@ -132,7 +133,7 @@ export class Detail {
             const wide = kind === KIND.INTERWAR ? lay.cw * 0.92 : lay.cw * 0.86;
             const s = balcStyle === 3 ? Math.floor(r * 3) : balcStyle % 3;
             const list = s === 0 ? groups.open : s === 1 ? groups.glazed : groups.half;
-            const c = s === 0 ? [0xcac5b6, 0xb0aca0, 0xd8cfae, 0xa9b7a4][Math.floor(r * 4)] : PVC[Math.floor(rnd01(seed + col, fi + 5) * PVC.length)];
+            const c = s === 0 ? [0xcac5b6, 0xb0aca0, 0xd8cfae, 0xa9b7a4][Math.floor(r * 4)] : s === 2 ? PANEL_TINT[Math.floor(rnd01(seed + col, fi + 5) * PANEL_TINT.length)] : PVC[Math.floor(rnd01(seed + col, fi + 5) * PVC.length)];
             put(list, u, yFloor, wide, c);
             if (s === 0 && r > 0.72) put(groups.laundry, u, yFloor, wide, CLOTH[0]);
             if (r < 0.1) put(groups.dish, u + wide * 0.3, yFloor + 0.85, 1, 0xffffff, 1.1);

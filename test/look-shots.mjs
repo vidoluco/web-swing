@@ -10,6 +10,8 @@ export const VIEWS = {
   street: { city: 'bucharest', pos: [-236, 0, -318], at: [-236, -420], pitch: 0.12, dist: 6 },
   blocuri: { city: 'bucharest', pos: [-6040, 0, 722], at: [-6032, 762], pitch: 0.12, dist: 6 },
   oldtown: { city: 'bucharest', pos: [-300, 0, -520], at: [-330, -560], pitch: 0.1, dist: 6 },
+  bar: { city: 'bucharest', pos: [-226, 0, -521], at: [-213, -518], pitch: 0.16, dist: 5 },
+  kiosk: { city: 'bucharest', pos: [-197, 0, -410], at: [-204, -423], pitch: 0.16, dist: 5 },
   swing: { city: 'bucharest', swing: true },
   roof: { city: 'bucharest', roof: true },
   brasov: { city: 'brasov', pos: [30.9, null, 60.1], at: [327, 943], pitch: 0.05, dist: 6 },
@@ -102,11 +104,22 @@ export async function shoot(browser, errors, tag, names) {
     if (!v) throw new Error('unknown view ' + name);
     if (cur !== v.city) {
       await page?.close();
-      page = await open(browser, `city=${v.city}&shot=perch${process.env.Q ? '&' + process.env.Q : ''}`, errors);
+      page = await open(browser, `city=${v.city}&shot=perch${process.env.NIGHT ? '&sun=0.02&env=0.05&nopost' : ''}${process.env.Q ? '&' + process.env.Q : ''}`, errors);
       cur = v.city;
       if (v.city === 'brasov') await page.evaluate(TERRAIN);
     }
     await place(page, v);
+    if (process.env.NIGHT) {
+      // a stand-in night for judging windows, lamps and signs: look-light drives the real one
+      await page.evaluate(() => {
+        const g = window.__game;
+        g.city.look.uniforms.uNight.value = 1;
+        g.scene.traverse((o) => o.material?.uniforms?.turbidity && (o.visible = false));
+        g.scene.background = null;
+        g.scene.fog.color.set(0x05070c);
+        g.advance(0.2);
+      });
+    }
     await page.screenshot({ path: `shots/look/${tag}-${name}.png` });
     const info = await page.evaluate(() => {
       const g = window.__game;
