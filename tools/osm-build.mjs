@@ -400,9 +400,10 @@ for (const e of els) {
             : t.leisure || t.landuse || t.natural === 'scrub' || t.natural === 'grassland' ? 'grass' : null;
   if (kind) for (const p of polygonsOf(e)) greens.push({ kind, outer: clean(p.outer), holes: p.holes.map(clean) });
 }
-// Fill woods, parks and cemeteries with trees where OSM has none mapped.
+// Fill woods, parks and cemeteries with trees where OSM has none mapped. A city with a "trees" table
+// in tools/city-config.mjs is planted per chunk tile instead (see plant below).
 const treeGrid = new Set(trees.map(([x, z]) => Math.floor(x / 12) + ',' + Math.floor(z / 12)));
-for (const g of greens) {
+for (const g of CITY.trees ? [] : greens) {
   const dens = g.kind === 'wood' ? 70 : g.kind === 'cemetery' ? 90 : g.kind === 'grass' ? 420 : 0;
   if (!dens) continue;
   const a = Math.abs(area(g.outer));
@@ -491,7 +492,31 @@ function tilePolygon(outer, holes, put) {
   }
 }
 for (const w of waters) tilePolygon(w.outer, w.holes, (c, o, hs) => c.w.push([flat(o), hs.map(flat)]));
-for (const g of greens) tilePolygon(g.outer, g.holes, (c, o, hs) => c.g.push([g.kind, flat(o), hs.map(flat)]));
+// With a "trees" table (m2 per tree by green kind) each tile is planted on its own, so a forest of many
+// square kilometres costs no more per tile than a park and the point-in-polygon tests stay on small rings.
+function plant(o, hs, kind) {
+  const dens = CITY.trees[kind];
+  const a = Math.abs(area(o)) - hs.reduce((sum, h) => sum + Math.abs(area(h)), 0);
+  const n = dens ? Math.floor(a / dens) : 0;
+  if (!n) return;
+  const xs = o.map((p) => p[0]), zs = o.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+  const maxTries = Math.ceil((n * (x1 - x0) * (z1 - z0)) / a) * 3;
+  let placed = 0;
+  for (let tries = 0; placed < n && tries < maxTries; tries++) {
+    const p = [x0 + rnd() * (x1 - x0), z0 + rnd() * (z1 - z0)];
+    if (!inside(p, o) || hs.some((h) => inside(p, h))) continue;
+    if (treeGrid.has(Math.floor(p[0] / 12) + ',' + Math.floor(p[1] / 12))) continue;
+    trees.push([Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10, 1]);
+    placed++;
+  }
+}
+for (const g of greens) {
+  tilePolygon(g.outer, g.holes, (c, o, hs) => {
+    c.g.push([g.kind, flat(o), hs.map(flat)]);
+    if (CITY.trees) plant(o, hs, g.kind);
+  });
+}
 for (const [x, z, kind, name] of pois) if (inBox(x, z)) chunkOf(x, z).p.push([Math.round(x * 10) / 10, Math.round(z * 10) / 10, kind, name]);
 for (const t of trees) if (inBox(t[0], t[1])) chunkOf(t[0], t[1]).t.push(Math.round(t[0] * 10) / 10, Math.round(t[1] * 10) / 10);
 
