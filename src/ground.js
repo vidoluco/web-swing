@@ -74,11 +74,11 @@ void groundShade(inout vec4 dc) {
   gRough = mix(gRough, 0.55, track * 0.4);
   // repair patches and cracks
   vec2 pc = floor(vec2(u / 6.5, off / 2.6) + seed);
-  float fix = step(0.9, hash12(pc)) * bandAA(fract(u / 6.5 + seed), 0.05, 0.95, 0.02) * bandAA(fract(off / 2.6 + seed), 0.05, 0.95, 0.02);
-  col = mix(col, col * 0.62, fix);
+  float fix = step(0.965, hash12(pc)) * bandAA(fract(u / 6.5 + seed), 0.05, 0.95, 0.02) * bandAA(fract(off / 2.6 + seed), 0.05, 0.95, 0.02);
+  col = mix(col, col * 0.8, fix);
   gRough = mix(gRough, 0.75, fix);
   float crack = (1.0 - smoothstep(0.0, 0.03, abs(fbm(p * 0.7 + seed) - 0.5))) * step(0.6, fbm(p * 0.05 + 3.0));
-  col *= 1.0 - 0.5 * crack;
+  col *= 1.0 - 0.32 * crack * (1.0 - smoothstep(18.0, 50.0, distance(vWPos, cameraPosition)));
   // paint
   float paint = 0.0;
   float clearance = min(w * 0.55 + 1.0, 8.0);
@@ -189,9 +189,13 @@ void groundShade(inout vec4 dc) {
   n = mix(n, n3, bare * 0.75);
   col *= 0.8 + 0.4 * vnoise(p * 0.4);
   // fallen leaves
-  float leaf = step(0.955, hash12(floor(p * 7.0))) * (0.5 + 0.5 * vnoise(p * 0.5));
-  vec3 lc = mix(vec3(0.55, 0.32, 0.08), vec3(0.62, 0.5, 0.1), hash12(floor(p * 7.0) + 4.0));
-  col = mix(col, lc, leaf * 0.7);
+  vec2 lp = p * 6.0;
+  vec2 lcell = floor(lp);
+  vec2 lo = vec2(hash12(lcell + 1.0), hash12(lcell + 2.0)) * 0.5 + 0.25;
+  float ld = length((fract(lp) - lo) * vec2(1.0, 1.8));
+  float leaf = (1.0 - smoothstep(0.12, 0.2, ld)) * step(0.82, hash12(lcell)) * (0.4 + 0.6 * vnoise(p * 0.4));
+  vec3 lc = mix(vec3(0.5, 0.26, 0.06), vec3(0.62, 0.5, 0.1), hash12(lcell + 4.0));
+  col = mix(col, lc, leaf * 0.85);
   dc.rgb = col * 0.95;
   gRough = 0.95;
   gNrm = n; gNrmK = 0.8;

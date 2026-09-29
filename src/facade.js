@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { uniforms } from './uniforms.js';
+import { PARAMS } from './buildings.js';
 
 // The building material. Every wall pixel is worked out from per-vertex data (see buildings.js): distance along
 // the wall, building kind, seed, floor range, edge length and variant bits. Floors and window bays are laid out
@@ -57,7 +58,7 @@ vec3 frameColour(float r) {
 }
 
 // Interior mapping: a box room behind the glass. p = position on the glass in metres, r = view ray in room space.
-vec3 room(vec2 p, vec3 r, vec2 size, float depth, float seed, float lit, out float shade) {
+vec3 room(vec2 p, vec3 r, vec2 size, float depth, float seed, float lit, float shop, out float shade) {
   vec3 o = vec3(p, 0.0);
   float tx = r.x > 0.0 ? (size.x - o.x) / r.x : -o.x / min(r.x, -1e-4);
   float ty = r.y > 0.0 ? (size.y - o.y) / r.y : -o.y / min(r.y, -1e-4);
@@ -67,14 +68,30 @@ vec3 room(vec2 p, vec3 r, vec2 size, float depth, float seed, float lit, out flo
   vec3 wallC = mix(vec3(0.78, 0.74, 0.66), vec3(0.62, 0.7, 0.74), hash12(vec2(seed, 3.1)));
   wallC = mix(wallC, vec3(0.85, 0.66, 0.5), step(0.75, hash12(vec2(seed, 9.2))));
   vec3 c;
-  if (t == tz) {
+  if (t == tz && shop > 0.5) {
+    // shelving: rows of coloured goods on a pale wall, a counter on one side
+    c = vec3(0.72, 0.7, 0.66);
+    float row = floor(h.y / 0.42);
+    float col = floor(h.x / 0.32);
+    float g = hash12(vec2(col, row) + seed);
+    float shelf = step(0.86, fract(h.y / 0.42));
+    vec3 goods = mix(vec3(0.75, 0.2, 0.15), vec3(0.15, 0.4, 0.7), hash12(vec2(col, row) + 7.0));
+    goods = mix(goods, vec3(0.9, 0.75, 0.2), step(0.66, g));
+    c = mix(c, goods, step(0.3, g) * (1.0 - shelf) * step(row, 4.0) * 0.85);
+    c = mix(c, vec3(0.32, 0.22, 0.14), shelf);
+    if (h.y < 1.0 && abs(h.x / size.x - 0.35) < 0.3) c = vec3(0.3, 0.2, 0.13);
+  } else if (t == tz) {
     c = wallC;
     float fx = h.x / size.x;
     if (hash12(vec2(seed, 5.0)) > 0.5 && abs(fx - 0.3) < 0.1 && h.y < size.y * 0.75) c *= 0.55;
     if (abs(fx - 0.65) < 0.12 && abs(h.y / size.y - 0.55) < 0.12) c = mix(c, vec3(0.2, 0.3, 0.5) * hash12(vec2(seed, 7.0)) + 0.1, 0.8);
   } else if (t == ty) {
     c = r.y < 0.0 ? mix(vec3(0.35, 0.25, 0.17), vec3(0.4, 0.4, 0.42), hash12(vec2(seed, 1.7))) : vec3(0.9);
-    if (r.y > 0.0) c += lit * 1.5 * exp(-8.0 * length((h.xz - vec2(size.x * 0.5, depth * 0.5)) / vec2(size.x, depth)));
+    if (shop > 0.5 && r.y < 0.0) c = mix(vec3(0.55, 0.5, 0.44), vec3(0.3, 0.3, 0.32), step(0.5, fract(h.x / 0.6) + fract(h.z / 0.6)) * 0.5);
+    if (r.y > 0.0) {
+      c += lit * 1.5 * exp(-8.0 * length((h.xz - vec2(size.x * 0.5, depth * 0.5)) / vec2(size.x, depth)));
+      if (shop > 0.5) c += vec3(1.3, 1.25, 1.1) * step(0.5, fract(h.z / 2.2 + 0.25)) * step(0.5, fract(h.x / 1.6)) * 0.6 * (0.4 + 0.6 * uNight);
+    }
   } else {
     c = wallC * 0.82;
   }
@@ -115,7 +132,9 @@ vec3 windowView(vec2 p, vec4 b, vec3 rr, float depth, float frameW, vec3 frameCo
   // glass: room behind, sky reflected on top
   float shade;
   vec2 size = vec2(w, h) * 1.9;
-  vec3 inside = room(q - b.xz + vec2(0.3, 0.2), rr, size, mode == 1 ? 9.0 : mode == 2 ? 7.0 : 4.5, seed, lit, shade);
+  vec3 inside = room(q - b.xz + vec2(0.3, 0.2), rr, size, mode == 1 ? 8.0 : mode == 2 ? 7.0 : 4.5, seed, lit, mode == 1 ? 1.0 : 0.0, shade);
+  if (mode == 2) inside *= vec3(0.32, 0.42, 0.48);
+  if (mode == 1) inside *= 0.7;
   float blinds = mode == 0 ? step(0.55, hash12(vec2(seed, 11.3))) * hash12(vec2(seed, 2.9)) * 0.85 : 0.0;
   float pf = (q.y - b.z) / h;
   vec3 blindC = mix(vec3(0.85, 0.82, 0.74), vec3(0.55, 0.6, 0.62), hash12(vec2(seed, 5.5)));
@@ -127,9 +146,10 @@ vec3 windowView(vec2 p, vec4 b, vec3 rr, float depth, float frameW, vec3 frameCo
   vec3 Vw = normalize(vWPos - cameraPosition);
   vec3 R = reflect(Vw, N);
   float cosv = clamp(dot(-Vw, N), 0.0, 1.0);
-  float fres = (mode == 2 ? 0.28 : 0.1) + (mode == 2 ? 0.7 : 0.9) * pow(1.0 - cosv, 4.0);
+  float fres = (mode == 2 ? 0.5 : mode == 1 ? 0.22 : 0.1) + (mode == 2 ? 0.5 : 0.9) * pow(1.0 - cosv, 4.0);
   vec3 skyR = mix(vec3(0.62, 0.66, 0.7), vec3(0.3, 0.46, 0.72), clamp(R.y * 1.6, 0.0, 1.0));
   skyR = mix(vec3(0.1, 0.1, 0.11) + 0.05 * hash12(vec2(seed, 3.3)), skyR, smoothstep(-0.04, 0.14, R.y));
+  if (mode == 2) skyR = mix(skyR, vec3(0.18, 0.3, 0.42), 0.35) * (0.7 + 0.5 * fbm(vec2(vWPos.x + vWPos.z, vWPos.y * 0.4) * 0.15));
   skyR *= mix(1.0, 0.07, uNight);
   em = roomLight * (1.0 - fres) + skyR * fres * 1.1;
   wr = 0.05; wm = mode == 2 ? 0.55 : 0.1; glassAmt = 1.0;
@@ -138,7 +158,15 @@ vec3 windowView(vec2 p, vec4 b, vec3 rr, float depth, float frameW, vec3 frameCo
 `;
 
 // Wall shading. Writes diffuseColor, roughness, metalness, emissive, AO and the normal perturbation.
+const KIND_PARAMS = /* glsl */ `
+void kindParams(int k, out float cwT, out float fhT, out float gf) {
+  cwT = 3.2; fhT = 3.2; gf = 3.4;
+${PARAMS.map((p, i) => `  ${i ? 'else ' : ''}if (k == ${i}) { cwT = ${p[0].toFixed(2)}; fhT = ${p[1].toFixed(2)}; gf = ${p[2].toFixed(2)}; }`).join('\n')}
+}
+`;
+
 const WALL_FN = /* glsl */ `
+${KIND_PARAMS}
 void wallShade(inout vec4 diffuseColor, vec3 N) {
   vec3 base = diffuseColor.rgb;
   float kind = vInfo.x, seed = vInfo.y, baseY = vInfo.z, topY = vInfo.w;
@@ -157,20 +185,17 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
   float eh = hash11(edge * 0.371 + seed);
 
   // ---- layout per kind ----
-  float cwT = 3.2, fhT = 3.2, gf = 3.4;
+  float cwT, fhT, gf;
+  kindParams(ki, cwT, fhT, gf);
   float wallLayer = 0.0, wallScale = 3.0;
-  if (ki == 0) { cwT = 1.6; fhT = 3.9; gf = 5.6; wallLayer = 6.0; }
-  else if (ki == 1) { cwT = 3.4; fhT = 4.0; gf = 4.2; wallLayer = 3.0 + floor(hash11(seed) * 2.0); wallScale = 1.8; }
-  else if (ki == 2) { cwT = 4.2; fhT = 5.0; gf = 6.2; wallLayer = floor(hash11(seed + 1.0) * 2.0); }
-  else if (ki == 3) { cwT = 6.0; fhT = 3.6; gf = 4.6; wallLayer = 5.0; }
-  else if (ki == 4) { cwT = 3.0; fhT = 2.78; gf = 2.78; wallLayer = renov ? 0.0 : 5.0 + floor(hash11(seed) * 2.0); }
-  else if (ki == 5) { cwT = 3.6; fhT = 3.9; gf = 4.8; wallLayer = floor(hash11(seed + 2.0) * 3.0); }
-  else if (ki == 6) { cwT = 3.2; fhT = 3.15; gf = 3.9; wallLayer = floor(hash11(seed + 3.0) * 3.0); }
-  else if (ki == 7) { cwT = 3.4; fhT = 3.1; gf = 3.2; wallLayer = floor(hash11(seed + 4.0) * 3.0); }
-  else { cwT = 3.3; fhT = 3.7; gf = 4.4; wallLayer = floor(hash11(seed + 5.0) * 3.0); }
+  if (ki == 0) wallLayer = 6.0;
+  else if (ki == 1) { wallLayer = 3.0 + floor(hash11(seed) * 2.0); wallScale = 1.8; }
+  else if (ki == 2) wallLayer = floor(hash11(seed + 1.0) * 2.0);
+  else if (ki == 3) wallLayer = 5.0;
+  else if (ki == 4) wallLayer = renov ? 0.0 : 5.0 + floor(hash11(seed) * 2.0);
+  else wallLayer = floor(hash11(seed + float(ki)) * 3.0);
   // shops on the ground floor of the older centre and of some blocks
-  bool shops = (ki == 5 || ki == 8 || ki == 6 || ki == 0 || ki == 3) || (ki == 4 && hash11(seed + 9.0) < 0.3);
-  if (ki == 7) shops = false;
+  bool shops = (ki == 5 || ki == 8 || ki == 6) || (ki == 4 && hash11(seed + 9.0) < 0.3);
 
   float gfH = min(gf, H);
   float upH = H - gfH;
@@ -248,9 +273,10 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
     }
   }
   // corner piers: the outer bays of a wall are solid on decorated kinds
+  int ei = int(edge + 0.5);
   bool pier = (ki == 5 || ki == 8 || ki == 6 || ki == 7 || ki == 2 || ki == 1) && nc > 2.5 && (col < 0.5 || col > nc - 1.5);
   if (ki == 4 && L < 15.0) pier = true; // blank gable ends of the prefab blocks
-  if (ki == 4 && nc > 4.5 && (col < 0.5 || col > nc - 1.5) && hash11(edge) < 0.5) pier = true;
+  if (ki == 4 && nc > 4.5 && (col < 0.5 || col > nc - 1.5) && ((ei >> 3) & 1) == 0) pier = true;
 
   // ---- window bays ----
   vec4 win = vec4(0.0);
@@ -266,14 +292,14 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
   bool shopF = shops && groundF;
   if (ki == 4) {
     // prefab block: balcony columns in strips, plain windows elsewhere
-    float pat = mod(floor(edge), 3.0);
+    float pat = float(ei % 3);
     float cidx = col;
     float stair = abs(col - floor(nc * 0.5)) < 0.5 ? 1.0 : 0.0;
     if (pat < 0.5) balcony = mod(cidx, 2.0) < 0.5;
     else if (pat < 1.5) balcony = mod(floor(cidx * 0.5), 2.0) < 0.5;
     else balcony = stair < 0.5;
-    if (nc < 5.5) balcony = false;
-    if (groundF && !shopF) balcony = false;
+    if (nc < 5.5 || pier) balcony = false;
+    if (groundF) balcony = false;
     if (balcony) {
       win = vec4(cw * 0.1, cw * 0.9, fhh * 0.06, fhh * 0.9);
       frameW = 0.05;
@@ -293,7 +319,7 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
   } else if (ki == 6) {
     // wide ribbon windows between solid piers
     win = vec4(cw * 0.06, cw * 0.94, fhh * 0.24, fhh * 0.78);
-    balcony = groundF ? false : (mod(cell.x + floor(edge), 4.0) < 1.5 && hash11(edge) < 0.6);
+    balcony = !groundF && !pier && ((int(col) + ei) % 4) < 2 && ((ei >> 4) & 7) < 5;
     depth = 0.22;
     frameCol = frameColour(hash12(cell + seed));
   } else if (ki == 7) {
@@ -337,6 +363,7 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
   if (topFloor && ki == 4 && nUp > 3.5 && hash11(seed + 2.0) < 0.25) { hasWin = hasWin; }
   float open = 0.0;
   if (hasWin && fade < 0.999) open = bandAA(cp.x, win.x, win.y, aaX) * bandAA(cp.y, win.z, win.w, aaY);
+  if ((ki == 5 || ki == 8) && fi > 0.5 && fi < 1.5 && !pier && (int(col) + (ei >> 2)) % 3 == 0) balcony = true;
   // ornate surrounds on decorated kinds
   if (old && hasWin && !shopF) {
     vec2 sd = vec2(min(cp.x - win.x, win.y - cp.x), min(cp.y - win.z, win.w - cp.y));
@@ -425,8 +452,17 @@ void wallShade(inout vec4 diffuseColor, vec3 N) {
     else revCol = col3;
     vec3 wc = windowView(cp, win, vec3(dot(Vw, vTan3), dot(Vw, vec3(0.0, 1.0, 0.0)), -dot(Vw, N)), depth, frameW, frameCol, revCol, rs * 97.0 + seed, lit, mode, fade, em, wr, wm, glassAmt);
     if (door) {
-      wc = pow(vec3(0.3, 0.2, 0.12), vec3(2.2)) * (0.7 + 0.5 * step(0.5, fract(cp.x * 6.0)));
-      em = vec3(0.0); glassAmt = 0.0; wr = 0.6;
+      vec2 dq = (cp - win.xz) / vec2(win.y - win.x, win.w - win.z);
+      float dh = hash11(edge + 17.0);
+      vec3 dc = dh < 0.3 ? vec3(0.32, 0.19, 0.1) : dh < 0.55 ? vec3(0.1, 0.28, 0.16) : dh < 0.75 ? vec3(0.16, 0.2, 0.3) : dh < 0.9 ? vec3(0.4, 0.06, 0.05) : vec3(0.1);
+      dc = pow(dc, vec3(2.2));
+      float fr = min(min(dq.x, 1.0 - dq.x), 1.0 - dq.y) < 0.09 ? 1.0 : 0.0;
+      float pan = bandAA(dq.x, 0.2, 0.8, 0.02) * (bandAA(dq.y, 0.06, 0.42, 0.02) + bandAA(dq.y, 0.5, 0.88, 0.02));
+      wc = dc * mix(0.75, 1.15, pan) * mix(1.0, 0.8, fr);
+      if (dh > 0.5 && dq.y > 0.5 && fr < 0.5) wc = vec3(0.02) + vec3(0.12, 0.16, 0.2) * pow(1.0 - clamp(0.5, 0.0, 1.0), 2.0);
+      float handle = step(length(dq - vec2(0.85, 0.45)), 0.035);
+      wc = mix(wc, vec3(0.7, 0.62, 0.3), handle);
+      em = vec3(0.0); glassAmt = 0.0; wr = 0.5;
     }
     float o = open * (1.0 - fade);
     fin = mix(fin, wc, o);
@@ -480,8 +516,8 @@ void roofShade(inout vec4 diffuseColor, vec3 N) {
     vec2 p = vWPos.xz;
     vec4 t = wallTex(6.0, p / 2.4);
     float n = fbm(p * 0.22 + seed);
-    vec3 tar = vec3(0.06, 0.06, 0.065) * (0.8 + 0.5 * t.r);
-    vec3 conc = t.rgb * 0.55;
+    vec3 tar = vec3(0.1, 0.1, 0.105) * (0.8 + 0.5 * t.r);
+    vec3 conc = t.rgb * 0.7;
     vec3 gravel = vec3(0.22, 0.21, 0.2) * (0.6 + 0.9 * vnoise(p * 9.0));
     vec3 c = mix(tar, conc, smoothstep(0.45, 0.6, n));
     c = mix(c, gravel, smoothstep(0.62, 0.78, fbm(p * 0.13 + seed * 2.0)));

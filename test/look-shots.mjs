@@ -8,11 +8,12 @@ import { startServer, launch, open } from './harness.mjs';
 export const VIEWS = {
   // name: city, player position, direction to look at (x, z), camera pitch and distance
   street: { city: 'bucharest', pos: [-236, 0, -318], at: [-236, -420], pitch: 0.12, dist: 6 },
-  blocuri: { city: 'bucharest', pos: [-5560, 0, 690], at: [-5560, 790], pitch: 0.1, dist: 6 },
+  blocuri: { city: 'bucharest', pos: [-6040, 0, 722], at: [-6032, 762], pitch: 0.12, dist: 6 },
   oldtown: { city: 'bucharest', pos: [-300, 0, -520], at: [-330, -560], pitch: 0.1, dist: 6 },
   swing: { city: 'bucharest', swing: true },
   roof: { city: 'bucharest', roof: true },
   brasov: { city: 'brasov', pos: [30.9, null, 60.1], at: [327, 943], pitch: 0.05, dist: 6 },
+  tampa: { city: 'brasov', pos: [420, null, 520], at: [30, 60], pitch: -0.12, dist: 9 },
 };
 
 // A rough terrain mesh for Brasov, injected only for screenshots.
@@ -45,11 +46,52 @@ const TERRAIN = async () => {
   geo.setAttribute('position', new gm.geometry.attributes.position.constructor(pos, 3));
   geo.setIndex(idxs);
   geo.computeVertexNormals();
+  g.city.look?.padArea(geo);
   const mesh = new gm.constructor(geo, g.city.mats.grass);
   mesh.receiveShadow = true;
   g.scene.add(mesh);
+  // chunks built before the terrain existed were draped on 0: rebuild them
+  for (const rec of g.city.recs.values()) if (rec.state === 'loaded') g.city.unloadChunk(rec);
+  await g.city.streamAround(0, 0, 1500);
   return true;
 };
+
+// Puts the player and camera at a view and lets the chunks stream in. Works on any build of the game.
+export async function place(page, v) {
+  await page.evaluate(async (v) => {
+    const g = window.__game;
+    const yawTo = (px, pz, ax, az) => Math.atan2(-(ax - px), -(az - pz));
+    if (v.pos) {
+      const [px, , pz] = v.pos;
+      g.city.focus = { x: px, z: pz };
+      await g.city.streamAround(px, pz, 900);
+      g.city.focus = null;
+      const y = v.pos[1] ?? g.city.groundAt(px, pz);
+      g.player.reset();
+      g.player.pos.set(px, y, pz);
+      g.player.groundBox = null;
+      g.player.mode = 'ground';
+      g.player.facing.set(v.at[0] - px, 0, v.at[1] - pz).normalize();
+      g.rig.yaw = yawTo(px, pz, v.at[0], v.at[1]);
+      g.rig.pitch = v.pitch;
+      g.rig.dist = v.dist;
+      g.player.idleTime = 2;
+    } else if (v.roof) {
+      g.shot('perch');
+      g.rig.pitch = -0.25;
+    } else if (v.swing) {
+      g.shot('perch');
+      g.setInput({ moveY: 1, jumpPressed: true });
+    }
+  }, v);
+  if (v.swing) {
+    await page.evaluate(() => window.__game.advance(0.4));
+    await page.evaluate(() => window.__game.setInput({ moveY: 1, swing: true, swingPressed: true }));
+    await page.evaluate(() => window.__game.advance(0.1));
+    await page.evaluate(() => window.__game.setInput({ moveY: 1, swing: true }));
+    await page.evaluate(() => window.__game.advance(2.2));
+  } else await page.evaluate(() => window.__game.advance(1.2));
+}
 
 export async function shoot(browser, errors, tag, names) {
   mkdirSync('shots/look', { recursive: true });
@@ -60,49 +102,16 @@ export async function shoot(browser, errors, tag, names) {
     if (!v) throw new Error('unknown view ' + name);
     if (cur !== v.city) {
       await page?.close();
-      page = await open(browser, `city=${v.city}&shot=perch&nopost=0`, errors);
+      page = await open(browser, `city=${v.city}&shot=perch${process.env.Q ? '&' + process.env.Q : ''}`, errors);
       cur = v.city;
       if (v.city === 'brasov') await page.evaluate(TERRAIN);
     }
-    const r = await page.evaluate(async (v) => {
-      const g = window.__game;
-      const yawTo = (px, pz, ax, az) => Math.atan2(-(ax - px), -(az - pz));
-      let px, pz;
-      if (v.pos) {
-        [px, , pz] = v.pos;
-        g.city.focus = { x: px, z: pz };
-        await g.city.streamAround(px, pz, 900);
-        g.city.focus = null;
-        const y = v.pos[1] ?? g.city.groundAt(px, pz);
-        g.player.reset();
-        g.player.pos.set(px, y, pz);
-        g.player.groundBox = null;
-        g.player.mode = 'ground';
-        g.player.facing.set(v.at[0] - px, 0, v.at[1] - pz).normalize();
-        g.rig.yaw = yawTo(px, pz, v.at[0], v.at[1]);
-        g.rig.pitch = v.pitch;
-        g.rig.dist = v.dist;
-        g.player.idleTime = 2;
-      } else if (v.roof) {
-        g.shot('perch');
-        g.rig.pitch = -0.25;
-      } else if (v.swing) {
-        g.shot('perch');
-        g.setInput({ moveY: 1, jumpPressed: true });
-      }
-      return true;
-    }, v);
-    void r;
-    if (v.swing) {
-      await page.evaluate(() => window.__game.advance(0.4));
-      await page.evaluate(() => window.__game.setInput({ moveY: 1, swing: true, swingPressed: true }));
-      await page.evaluate(() => window.__game.advance(0.1));
-      await page.evaluate(() => window.__game.setInput({ moveY: 1, swing: true }));
-      await page.evaluate(() => window.__game.advance(2.2));
-    } else await page.evaluate(() => window.__game.advance(1.2));
+    await place(page, v);
     await page.screenshot({ path: `shots/look/${tag}-${name}.png` });
     const info = await page.evaluate(() => {
-      const i = window.__game.renderer.info;
+      const g = window.__game;
+      g.renderer.render(g.scene, g.camera);
+      const i = g.renderer.info;
       return { calls: i.render.calls, tris: i.render.triangles };
     });
     out.push({ name, ...info });

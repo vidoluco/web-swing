@@ -110,7 +110,7 @@ export class Streets {
       else if (r.cls === 'ped') ribbon(S.plaza, city, pts, r.w, 0.02, r.w, r.w, 2, 0, this.step);
       else {
         const flags = (r.major ? 1 : 0) | (r.oneway ? 2 : 0) | (r.bridge ? 4 : 0);
-        const W = r.w + (r.major ? 7 : 4.5);
+        const W = r.w + (r.major ? 10 : 6);
         ribbon(S.sidewalk, city, pts, W, 0.015, r.w, W, seed, 0, this.step);
         ribbon(S.road, city, pts, r.w + 0.36, 0.03, r.w, flags, seed, 0, this.step);
       }

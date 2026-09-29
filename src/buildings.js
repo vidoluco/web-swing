@@ -9,7 +9,51 @@ import * as THREE from 'three';
 //   aSurf  surface type (0 wall, 1 flat roof, 2 pitched roof, 3 parapet), v (slope coordinate of a pitched roof)
 //   aTan   unit tangent in the direction of u
 export const KIND = { GLASS: 0, BRICK: 1, MONUMENT: 2, RIBBON: 3, PANEL: 4, BELLE: 5, INTERWAR: 6, HOUSE: 7, BAROQUE: 8 };
-export const WALL_STRIDE = 14; // detail.walls record: sx sz ex ez y0 y1 kind seed edge variant L onGround nx nz
+export const WALL_STRIDE = 14; // detail.walls record: sx sz ex ez base y1 kind seed edge variant L onGround nx nz
+// Facade layout per kind: target bay width, storey height, ground floor height. The fragment shader gets the same
+// table, and the detail layer uses layout() so 3D balconies sit exactly on the bays the shader draws.
+export const PARAMS = [
+  [1.6, 3.9, 5.6], // glass
+  [3.4, 4.0, 4.2], // brick
+  [4.2, 5.0, 6.2], // monument
+  [6.0, 3.6, 4.6], // ribbon
+  [3.0, 2.78, 2.78], // panel
+  [3.6, 3.9, 4.8], // belle epoque
+  [3.2, 3.15, 3.9], // interwar
+  [3.4, 3.1, 3.2], // house
+  [3.3, 3.7, 4.4], // baroque
+];
+export function layout(kind, L, H) {
+  const [cwT, fhT, gf0] = PARAMS[kind];
+  let gfH = Math.min(gf0, H);
+  const upH = H - gfH;
+  const nUp = upH < fhT * 0.55 ? 0 : Math.max(1, Math.floor(upH / fhT + 0.5));
+  if (nUp < 0.5) gfH = H;
+  const nc = Math.max(1, Math.floor(L / cwT + 0.5));
+  return { gfH, nUp, fh: nUp > 0 ? upH / nUp : H, nc, cw: L / nc };
+}
+// Which bays carry a balcony. Mirrors wallShade() in facade.js (edge is the integer edge id).
+export function balconyAt(kind, col, fi, nc, L, edge) {
+  if (fi < 1) return false;
+  if (kind === KIND.PANEL) {
+    if (L < 15 || nc < 5.5) return false;
+    if (nc > 4.5 && (col < 0.5 || col > nc - 1.5) && ((edge >> 3) & 1) === 0) return false;
+    const pat = edge % 3;
+    if (pat === 0) return col % 2 === 0;
+    if (pat === 1) return Math.floor(col / 2) % 2 === 0;
+    return col !== Math.floor(nc * 0.5);
+  }
+  if (kind === KIND.INTERWAR) {
+    if (nc > 2.5 && (col < 0.5 || col > nc - 1.5)) return false;
+    return (col + edge) % 4 < 1.5 && ((edge >> 4) & 7) < 5;
+  }
+  if (kind === KIND.BELLE || kind === KIND.BAROQUE) {
+    if (fi !== 1 || (nc > 2.5 && (col < 0.5 || col > nc - 1.5))) return false;
+    return (col + (edge >> 2)) % 3 === 0;
+  }
+  return false;
+}
+
 export const SURF = { WALL: 0, FLAT: 1, PITCHED: 2, PARAPET: 3 };
 const PARAPET = 0.8;
 const SKIRT = 1.2;
@@ -164,11 +208,13 @@ export function buildBuildingGeometry(city, list) {
         const flipU = (ex / L) * nz - (ez / L) * nx < 0;
         const tx = flipU ? -ex / L : ex / L, tz = flipU ? -ez / L : ez / L;
         const edge = (h32(Math.round(ax * 10) * 73856093 ^ Math.round(az * 10) * 19349663 ^ sd) & 0xffff);
+        // floors are laid out from the ground at this edge, so terrain steps the storeys instead of shearing them
+        const eb = onGround ? Math.max(y0, Math.min(groundAt(ax, az), groundAt(bx, bz))) : y0;
         const ua = flipU ? L : 0, ub = flipU ? 0 : L;
-        const va = vert(ax, base, az, nx, 0, nz, kind, sd, y0, y1, ua, L, edge, variant, SURF.WALL, 0, tx, 0, tz);
-        const vb = vert(bx, base, bz, nx, 0, nz, kind, sd, y0, y1, ub, L, edge, variant, SURF.WALL, 0, tx, 0, tz);
-        const vc = vert(bx, yt, bz, nx, 0, nz, kind, sd, y0, y1, ub, L, edge, variant, SURF.WALL, 0, tx, 0, tz);
-        const vd = vert(ax, yt, az, nx, 0, nz, kind, sd, y0, y1, ua, L, edge, variant, SURF.WALL, 0, tx, 0, tz);
+        const va = vert(ax, base, az, nx, 0, nz, kind, sd, eb, y1, ua, L, edge, variant, SURF.WALL, 0, tx, 0, tz);
+        const vb = vert(bx, base, bz, nx, 0, nz, kind, sd, eb, y1, ub, L, edge, variant, SURF.WALL, 0, tx, 0, tz);
+        const vc = vert(bx, yt, bz, nx, 0, nz, kind, sd, eb, y1, ub, L, edge, variant, SURF.WALL, 0, tx, 0, tz);
+        const vd = vert(ax, yt, az, nx, 0, nz, kind, sd, eb, y1, ua, L, edge, variant, SURF.WALL, 0, tx, 0, tz);
         // Counter-clockwise from outside: the quad a,b,c,d is CCW seen from outside when cross(b-a, up) points along the normal.
         const cx = -(ez) * 1, cz = ex * 1; // cross((ex,0,ez),(0,1,0)) = (-ez, 0, ex)
         if (cx * nx + cz * nz > 0) idx.push(va, vb, vc, va, vc, vd);
@@ -193,7 +239,7 @@ export function buildBuildingGeometry(city, list) {
           else idx.push(ca, cb, cc, ca, cc, cd);
         }
         // Start and end of the wall in reading order (u = 0 to L), for the detail layer.
-        if (H > 6 && L > 3) detail.walls.push(flipU ? bx : ax, flipU ? bz : az, flipU ? ax : bx, flipU ? az : bz, y0, y1, kind, sd, edge, variant, L, onGround ? 1 : 0, nx, nz);
+        if (y1 - eb > 6 && L > 3) detail.walls.push(flipU ? bx : ax, flipU ? bz : az, flipU ? ax : bx, flipU ? az : bz, eb, y1, kind, sd, edge, variant, L, onGround ? 1 : 0, nx, nz);
       }
     }
 
@@ -229,7 +275,7 @@ export function buildBuildingGeometry(city, list) {
         if (cy > 0) idx.push(get(A), get(B), get(C));
         else idx.push(get(A), get(C), get(B));
       }
-      if (parapet && onGround) detail.flat.push((prism.minx + prism.maxx) / 2, (prism.minz + prism.maxz) / 2, y1, prism.maxx - prism.minx, prism.maxz - prism.minz, sd, kind);
+      if (parapet) detail.flat.push({ prism, y: y1, sd, kind });
     }
 
     function pushFace(f) {

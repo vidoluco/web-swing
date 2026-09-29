@@ -204,7 +204,8 @@ export class OsmCity {
       m.receiveShadow = true;
       group.add(m);
     }
-    if (data.t.length) group.add(...this.buildTrees(data.t));
+    if (data.t.length || this.look) for (const m of this.buildTrees(data.t, data.r)) group.add(m); // look-city: street trees too
+    this.look?.decorate(rec, data, group); // look-city: furniture, roof clutter
     this.scene.add(group);
     this.onChunkMesh?.(group);
     rec.group = group;
@@ -598,13 +599,13 @@ export class OsmCity {
       for (let i = 1; i < nor.length; i += 3) nor[i] = 1;
       g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
       g.computeBoundingSphere();
-      res[k] = g;
+      res[k] = this.look ? this.look.padArea(g) : g; // look-city:
     }
     return res;
   }
 
-  buildTrees(t) {
-    if (this.look) return this.look.trees(t); // look-city:
+  buildTrees(t, roads) {
+    if (this.look) return this.look.trees(t, roads); // look-city:
     const n = t.length / 2;
     const trunk = new THREE.InstancedMesh(this.mats.trunkGeo, this.mats.trunk, n);
     const crown = new THREE.InstancedMesh(this.mats.crownGeo, this.mats.crown, n);

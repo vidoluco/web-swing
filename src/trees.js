@@ -42,11 +42,11 @@ function makeAtlas(leaf) {
   const pal = [
     ['rgba(30,85,25,0.5)', 'rgba(60,110,25,0.45)'], // green
     ['rgba(215,170,30,0.62)', 'rgba(200,125,25,0.6)'], // gold
-    ['rgba(190,70,25,0.66)', 'rgba(150,40,30,0.64)'], // red-orange
+    ['rgba(236,140,40,0.76)', 'rgba(218,98,34,0.72)'], // red-orange
   ];
   for (let row = 0; row < 3; row++) {
     const sprites = [];
-    for (let k = 0; k < 6; k++) sprites.push(tint(pal[row][k % 2], 0.5 - k * 0.09));
+    for (let k = 0; k < 6; k++) sprites.push(tint(pal[row][k % 2], (row === 0 ? 0.5 : 0.36) - k * 0.075));
     for (let cx = 0; cx < COLS; cx++) {
       const ox = cx * CELL, oy = row * CELL;
       g.save();
@@ -202,25 +202,26 @@ class GeoBuilder {
   }
 }
 
-function broadleaf() {
+function broadleaf(near) {
   seedv = 41;
   const B = new GeoBuilder();
   const H = 11, trunkH = 4.6, R = new THREE.Vector3(4.3, 4.4, 4.3), C = new THREE.Vector3(0, trunkH + 2.5, 0);
   // trunk with a slight lean and five limbs into the crown
   const tp = [], tr = [];
-  for (let i = 0; i <= 5; i++) {
-    tp.push(new THREE.Vector3(Math.sin(i * 0.5) * 0.12, (i / 5) * trunkH, 0));
-    tr.push(0.3 - i * 0.04);
+  const rings = near ? 5 : 2;
+  for (let i = 0; i <= rings; i++) {
+    tp.push(new THREE.Vector3(Math.sin((i / rings) * 2.5) * 0.12, (i / rings) * trunkH, 0));
+    tr.push(0.3 - (i / rings) * 0.2);
   }
-  B.tube(tp, tr, 7, 0, 1);
-  for (let k = 0; k < 5; k++) {
+  B.tube(tp, tr, near ? 7 : 5, 0, 1);
+  for (let k = 0; k < (near ? 5 : 0); k++) {
     const a = (k / 5) * 6.283 + rand();
-    const from = tp[3 + (k % 3)].clone();
+    const from = tp[Math.min(rings, 3 + (k % 3))].clone();
     const to = new THREE.Vector3(Math.cos(a) * R.x * 0.55, C.y + R.y * (0.1 + rand() * 0.4), Math.sin(a) * R.z * 0.55);
     const pts = [from, from.clone().lerp(to, 0.5).add(new THREE.Vector3(0, 0.3, 0)), to];
     B.tube(pts, [0.09, 0.06, 0.025], 5, 0.2, 0.6);
   }
-  const N = 84;
+  const N = near ? 56 : 14;
   for (let i = 0; i < N; i++) {
     // points in the ellipsoid, pushed towards the surface
     let d = new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize();
@@ -233,7 +234,7 @@ function broadleaf() {
     if (ax.lengthSq() < 0.01) ax.set(1, 0, 0);
     ax.normalize();
     const ay = new THREE.Vector3().crossVectors(face, ax).normalize();
-    const sz = 1.25 + rand() * 0.55;
+    const sz = (1.55 + rand() * 0.6) * (near ? 1 : 2.05);
     const ao = 0.5 + 0.5 * Math.pow(r, 1.3) + 0.12 * Math.max(0, d.y);
     B.card_(p, ax, ay, sz, sz, nrm.clone().lerp(new THREE.Vector3(0, 1, 0), 0.15).normalize(), { col: i % COLS, row: 0 }, Math.min(1.1, ao), (i * 0.61803) % 1);
   }
@@ -241,18 +242,18 @@ function broadleaf() {
   return B.geometry();
 }
 
-function conifer() {
+function conifer(near) {
   seedv = 77;
   const B = new GeoBuilder();
   const H = 12;
   B.tube([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.02, 3, 0), new THREE.Vector3(0, H, 0)], [0.22, 0.14, 0.02], 7, 0, 1);
-  const tiers = 9;
+  const tiers = near ? 9 : 5;
   let id = 0;
   for (let t = 0; t < tiers; t++) {
     const f = t / (tiers - 1);
     const y = 2.0 + f * (H - 2.6);
     const rad = 3.0 * (1 - f) + 0.35;
-    const per = Math.max(4, Math.round(10 - f * 5));
+    const per = Math.max(3, Math.round((10 - f * 5) * (near ? 1 : 0.6)));
     for (let k = 0; k < per; k++) {
       const a = ((k + (t % 2) * 0.5) / per) * 6.283 + rand() * 0.3;
       const dir = new THREE.Vector3(Math.cos(a), -0.45 - 0.2 * rand(), Math.sin(a)).normalize();
@@ -261,7 +262,7 @@ function conifer() {
       const ay = dir.clone().negate().setY(Math.abs(dir.y) * 0.4 + 0.35).normalize();
       const ay2 = new THREE.Vector3().crossVectors(new THREE.Vector3(Math.cos(a), 0, Math.sin(a)), ax).normalize().add(new THREE.Vector3(Math.cos(a) * 0.4, 0.5, Math.sin(a) * 0.4)).normalize();
       const nrm = new THREE.Vector3(Math.cos(a), 0.55, Math.sin(a)).normalize();
-      const sz = 0.9 + rad * 0.32;
+      const sz = (0.9 + rad * 0.32) * (near ? 1 : 1.5);
       B.card_(c.clone().add(new THREE.Vector3(Math.cos(a) * rad * 0.15, 0, Math.sin(a) * rad * 0.15)), ax, ay2, sz * 1.1, sz, nrm, { col: (t + k) % COLS, row: 3 }, 0.55 + 0.45 * (0.5 + 0.5 * f), (id++ * 0.61803) % 1);
       void ay;
     }
@@ -269,12 +270,12 @@ function conifer() {
   return B.geometry();
 }
 
-function shrub() {
+function shrub(near) {
   seedv = 5;
   const B = new GeoBuilder();
   const C = new THREE.Vector3(0, 0.75, 0);
   const R = new THREE.Vector3(1.0, 0.75, 1.0);
-  const N = 14;
+  const N = near ? 14 : 6;
   for (let i = 0; i < N; i++) {
     const d = new THREE.Vector3(rand() - 0.5, rand() * 0.9 - 0.3, rand() - 0.5).normalize();
     const r = 0.5 + 0.5 * rand();
@@ -285,7 +286,7 @@ function shrub() {
     if (ax.lengthSq() < 0.01) ax.set(1, 0, 0);
     ax.normalize();
     const ay = new THREE.Vector3().crossVectors(face, ax).normalize();
-    const sz = 0.55 + rand() * 0.3;
+    const sz = (0.55 + rand() * 0.3) * (near ? 1 : 1.5);
     B.card_(p, ax, ay, sz, sz, nrm, { col: i % COLS, row: 0 }, 0.6 + 0.4 * r, (i * 0.61803) % 1);
   }
   return B.geometry();
@@ -297,7 +298,8 @@ export class Trees {
     const atlas = makeAtlas(assets.leaf);
     this.atlas = atlas;
     this.time = { value: 0 };
-    this.geos = { broad: broadleaf(), conifer: conifer(), shrub: shrub() };
+    this.geos = { broad: broadleaf(true), conifer: conifer(true), shrub: shrub(true) };
+    this.farGeos = { broad: broadleaf(false), conifer: conifer(false), shrub: shrub(false) };
     const mat = new THREE.MeshStandardMaterial({ map: atlas.tex, vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, alphaTest: 0.45 });
     const time = this.time;
     mat.onBeforeCompile = (shader) => {
@@ -356,7 +358,7 @@ varying float vPart;`
       lists[kind].push([x, z, r1, r2, r3, hh]);
     }
     const out = [];
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), col = new THREE.Color();
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
     const Y = new THREE.Vector3(0, 1, 0);
     for (const kind of ['broad', 'conifer', 'shrub']) {
       const L = lists[kind];
@@ -364,6 +366,7 @@ varying float vPart;`
       const mesh = new THREE.InstancedMesh(this.geos[kind], this.mat, L.length);
       const pal = new Float32Array(L.length);
       const bright = new Float32Array(L.length);
+      const ic = new Float32Array(L.length * 3); // raw data, not a colour: no colour management
       for (let i = 0; i < L.length; i++) {
         const [x, z, r1, r2, r3, hh] = L[i];
         q.setFromAxisAngle(Y, r2 * 6.283);
@@ -378,7 +381,7 @@ varying float vPart;`
           // colour: mostly green with gold and red in late September
           const c = ((hh >> 12) & 255) / 255;
           pal[i] = sp === 3 ? (c < 0.55 ? 2 : c < 0.8 ? 1 : 0) : sp === 2 ? (c < 0.5 ? 1 : 0) : c < 0.55 ? 0 : c < 0.9 ? 1 : 2;
-          bright[i] = 0.85 + r1 * 0.3;
+          bright[i] = 0.9 + r1 * 0.3;
         } else if (kind === 'conifer') {
           sx = 0.75 + r3 * 0.5; sy = 0.8 + r2 * 0.5;
           pal[i] = 0;
@@ -391,15 +394,25 @@ varying float vPart;`
         m4.compose(p.set(x, city.groundAt ? city.groundAt(x, z) : 0, z), q, s.set(sx, sy, sx));
         mesh.setMatrixAt(i, m4);
         // instance colour carries data: r = brightness, g = palette row / 2
-        mesh.setColorAt(i, col.setRGB(bright[i], pal[i] / 2, 0));
+        ic[i * 3] = bright[i];
+        ic[i * 3 + 1] = pal[i] / 2;
       }
       mesh.instanceMatrix.needsUpdate = true;
-      mesh.instanceColor.needsUpdate = true;
-      mesh.castShadow = true;
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(ic, 3);
+      mesh.castShadow = false; // switched on for the chunks near the camera (CityLook.update)
       mesh.receiveShadow = true;
       mesh.computeBoundingSphere();
-      mesh.frustumCulled = true;
-      out.push(mesh);
+      mesh.userData.lod = 'near';
+      // the far version shares the instance buffers and is shown instead beyond ~400 m
+      const far = new THREE.InstancedMesh(this.farGeos[kind], this.mat, L.length);
+      far.instanceMatrix = mesh.instanceMatrix;
+      far.instanceColor = mesh.instanceColor;
+      far.count = mesh.count;
+      far.receiveShadow = true;
+      far.boundingSphere = mesh.boundingSphere;
+      far.userData.lod = 'far';
+      far.visible = false;
+      out.push(mesh, far);
     }
     return out;
   }
