@@ -2,6 +2,19 @@
 
 A web-swinging game in the browser over the real Bucharest, rebuilt from the OHMO.AI reel and then taken further: the whole city from OpenStreetMap, traffic you can steal, and bars where you can drink beer or țuică. three.js, runs locally.
 
+![Swinging down a Bucharest boulevard](docs/screenshots/swing-boulevard.jpg)
+
+| | |
+|---|---|
+| ![Herăstrău and the northern lakes from above](docs/screenshots/herastrau-aerial.jpg) | ![Stealing a car on a boulevard](docs/screenshots/steal-a-car.jpg) |
+| The north of the city, from Herăstrău to the lakes | Any car in traffic can be stolen (F) |
+| ![Swinging along the Dâmbovița](docs/screenshots/dambovita-swing.jpg) | ![View from a tower over the parks](docs/screenshots/tower-view.jpg) |
+| Swinging along the Dâmbovița | A tower roof over the parks |
+| ![Drinks in front of Big Ben Pub](docs/screenshots/bar-pickups.jpg) | ![Drunk: double vision and a line in Romanian](docs/screenshots/drunk.jpg) |
+| A beer and a țuică outside a real bar | Double vision, and a line in Romanian with an Italian subtitle |
+
+Status: the hero is still the Spider-Man rig. The next round replaces it with Bunica, adds fights, crimes, police and missions, and a second city (Brașov, with its real hills). The design is in `docs/specs/2026-09-29-gameplay-design.md`.
+
 | | |
 |---|---|
 | Play | `npm run play` (builds, serves on http://127.0.0.1:5178/ and opens the browser) |
