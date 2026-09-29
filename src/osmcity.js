@@ -31,6 +31,18 @@ function pointInRing(x, z, r) {
   return c;
 }
 
+const RIVER_CELL = 32;
+
+// Is (x, z) within the half-width of one of the segments [ax, az, bx, bz, hw]?
+function nearSeg(list, x, z) {
+  for (const [ax, az, bx, bz, hw] of list) {
+    const ex = bx - ax, ez = bz - az;
+    const t = clamp(((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1), 0, 1);
+    if ((x - ax - ex * t) ** 2 + (z - az - ez * t) ** 2 <= hw * hw) return true;
+  }
+  return false;
+}
+
 // The polyline with points added so no piece is longer than 6 m.
 function densify(pts) {
   const out = [pts[0], pts[1]];
@@ -136,6 +148,7 @@ export class OsmCity {
       }
     };
     await Promise.all(Array.from({ length: 10 }, worker));
+    this.terrain?.update(x, z, Infinity, Math.min(R, 1400)); // terrain: the ground under a place we jump to is there at once
   }
 
   chunksWithin(x, z, R) {
@@ -167,6 +180,8 @@ export class OsmCity {
     this.prisms = [];
     this.grid = new Map();
     this.waterGrid = new Map();
+    this.riverGrid = new Map();
+    this.bridgeGrid = new Map();
     this.waters = [];
     this.stamp = 0;
     this.mats = {
@@ -225,6 +240,7 @@ export class OsmCity {
     const pm = this.propMesh(this._props || []);
     if (pm) group.add(pm);
     this.indexRoads(rec, data.r);
+    this.indexRivers(rec, data.r);
     this.placePois(rec, data.p || []);
     const lines = this.buildLines(data.r, data.g);
     for (const [key, geo] of Object.entries(lines)) {
@@ -300,7 +316,47 @@ export class OsmCity {
     }
   }
 
+  // Rivers are drawn as ribbons, not as water polygons: keep their pieces, and those of the bridges over
+  // them, in a grid so a walker can be told the ribbon is water (isRiver).
+  indexRivers(rec, roads) {
+    rec.rivs = [];
+    for (const r of roads) {
+      const river = r.cls === 'river';
+      if ((!river && !r.bridge) || r.pts.length < 4) continue;
+      // A bridge carries its pavements, which lie beside the carriageway.
+      const hw = river ? r.w / 2 : r.w / 2 + (r.cls === 'road' ? (r.major ? 3.5 : 2.25) + 1.5 : 1.5);
+      const grid = river ? this.riverGrid : this.bridgeGrid;
+      for (let i = 2; i < r.pts.length; i += 2) {
+        const seg = [r.pts[i - 2], r.pts[i - 1], r.pts[i], r.pts[i + 1], hw];
+        for (let gx = Math.floor((Math.min(seg[0], seg[2]) - hw) / RIVER_CELL); gx <= Math.floor((Math.max(seg[0], seg[2]) + hw) / RIVER_CELL); gx++) {
+          for (let gz = Math.floor((Math.min(seg[1], seg[3]) - hw) / RIVER_CELL); gz <= Math.floor((Math.max(seg[1], seg[3]) + hw) / RIVER_CELL); gz++) {
+            const k = gx * 100003 + gz;
+            (grid.get(k) || grid.set(k, []).get(k)).push(seg);
+            rec.rivs.push([grid, k, seg]);
+          }
+        }
+      }
+    }
+  }
+
+  // True on a river ribbon that is not under a bridge.
+  isRiver(x, z) {
+    const k = Math.floor(x / RIVER_CELL) * 100003 + Math.floor(z / RIVER_CELL);
+    const rs = this.riverGrid.get(k);
+    if (!rs || !nearSeg(rs, x, z)) return false;
+    const bs = this.bridgeGrid.get(k);
+    return !(bs && nearSeg(bs, x, z));
+  }
+
   unloadChunk(rec) {
+    for (const [grid, k, seg] of rec.rivs || []) {
+      const a = grid.get(k);
+      if (!a) continue;
+      const f = a.filter((q) => q !== seg);
+      if (f.length) grid.set(k, f);
+      else grid.delete(k);
+    }
+    rec.rivs = null;
     if (rec.roads) {
       const gone = new Set(rec.roads);
       for (const k of rec.roadKeys) {

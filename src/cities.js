@@ -4,7 +4,7 @@
 //   waypoints  route of the ?demo autopilot
 //   spawnFacing  the start roof is chosen on the side of this point, looking at it
 //   image      screenshot on the map selection card
-//   cardView   camera for that screenshot, node test/citycards.mjs <id>: x y z, then the x z it looks at
+//   cardView   camera for that screenshot, node test/citycards.mjs <id>: x y z, then the x z it looks at (and optionally its y)
 //   spawn, sign, atmosphere   only the cities with relief (see brasov)
 const bucharest = {
   label: 'București',
@@ -37,8 +37,8 @@ const bucharest = {
 const brasov = {
   label: 'Brașov',
   tagline: 'Il Centrul Vechi sotto la Tâmpa, fra i monti',
-  image: 'ui/city-brasov.jpg', // PLACEHOLDER picture until cardView is set: then node test/citycards.mjs brasov
-  cardView: null,
+  image: 'ui/city-brasov.jpg',
+  cardView: [-150, 85, 300, 370, 880, 200], // from the old town up to the Tampa and its sign; the last number is the height it looks at
   spots: [
     ['Piața Sfatului', 30.9, 60.1, { r: 150 }],
     ['Biserica Neagră', -42.3, 186.9, { r: 150 }],
