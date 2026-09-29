@@ -22,6 +22,7 @@ import { Hud } from './hud.js';
 import { Systems } from './systems.js';
 import { showMapSelect, mapSelectQuery } from './mapselect.js';
 import { Actors } from './actors.js'; // actors:
+import { Clothesline } from './clothesline.js'; // bunica:
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.has('demo');
@@ -193,10 +194,7 @@ const events = new Events();
 const hud = new Hud({ panels: $('hud-panels'), toast: $('toast'), objective: $('objective') });
 const rng = mulberry32(+params.get('seed') || 20260929);
 
-const webMat = new THREE.MeshBasicMaterial({ color: 0xf4f4f4, transparent: true });
-const web = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).translate(0, 0.5, 0), webMat);
-web.frustumCulled = false;
-scene.add(web);
+const clothesline = new Clothesline(scene); // bunica: the web is a clothesline
 
 scene.traverse((o) => {
   if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(withCSM);
@@ -410,7 +408,6 @@ function updateHint() {
 // ---------- loop ----------
 const camDir = new THREE.Vector3();
 const hand = new THREE.Vector3();
-const Y = new THREE.Vector3(0, 1, 0);
 let fpsAcc = 0, fpsN = 0, fps = 0;
 
 function tick(dt) {
@@ -510,15 +507,8 @@ function tick(dt) {
 
   if (player.webFade > 0 && !driving) {
     hero.handWorld(hand);
-    const to = player.anchor.clone().sub(hand);
-    const len = to.length();
-    web.visible = true;
-    web.position.copy(hand);
-    web.quaternion.setFromUnitVectors(Y, to.divideScalar(len || 1));
-    const thick = 0.02 + Math.min(len, 120) * 0.0003;
-    web.scale.set(thick, len * player.webT, thick);
-    webMat.opacity = player.webFade;
-  } else web.visible = false;
+    clothesline.update(time, hand, player.anchor, player.webT, player.webFade, camera.position); // bunica:
+  } else clothesline.hide(); // bunica:
 
   for (const ev of player.events) sfx.play(ev);
   player.events.length = 0;
@@ -588,6 +578,7 @@ const game = {
   input,
   events,
   actors, // actors:
+  clothesline, // bunica: the rope, for tests
   hud,
   save,
   minimap,
