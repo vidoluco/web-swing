@@ -79,11 +79,14 @@ export class Beams {
     return !!it && Math.hypot(pos.x - it.x, pos.z - it.z) < it.r && pos.y > it.y - 3 && pos.y < it.y + REACH;
   }
 
-  update(dt) {
+  // cam: the camera position. A column the camera is inside or right beside would tint the whole
+  // view, so it fades out within 7 m of the axis.
+  update(dt, cam) {
     this.t += dt;
     for (const it of this.items.values()) {
       const pulse = 0.5 + 0.5 * Math.sin(this.t * 3 + it.x * 0.13);
-      it.beamMat.opacity = it.alpha * (0.32 + 0.1 * pulse);
+      const near = cam ? Math.min(1, Math.max(0.03, (Math.hypot(cam.x - it.x, cam.z - it.z) - it.r * 0.5) / 7)) : 1;
+      it.beamMat.opacity = it.alpha * near * (0.32 + 0.1 * pulse);
       it.ringMat.opacity = it.alpha * (0.55 + 0.4 * pulse);
       it.ring.scale.setScalar(it.r * (1 + 0.06 * pulse));
     }

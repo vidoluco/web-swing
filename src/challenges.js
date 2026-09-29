@@ -183,7 +183,7 @@ export function create(game) {
     },
 
     update(dt) {
-      beams.update(dt);
+      beams.update(dt, game.camera.position);
       jars?.update(dt);
       if ((markT -= dt) <= 0) {
         markT = 0.25;

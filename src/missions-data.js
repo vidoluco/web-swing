@@ -8,7 +8,7 @@
 //   wanted (stars set at the start), reward {respect}, steps [...] }. Missions unlock in order.
 // Step types (src/missions.js):
 //   goto     { at, r, text, say, carry (label picked up here), drop (the carried thing is left here) }
-//   deliver  { points [{x, z}], r, text }: checkpoints in order, counted as they are taken (race is the same)
+//   deliver  { points [{x, z}], r, text }: checkpoints in order, counted as they are taken (race is the same step)
 //   defeat   { foes [{key, kind, at, variant, hp, scale}], guard (key of one to keep alive), text }
 //   tie      { refs [keys of earlier foes], text }: every one tied (or knocked out)
 //   chase    { foes, refs, flee [{ref, route [[x, z]], speed, alert}], text }: like tie, but they run

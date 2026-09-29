@@ -222,6 +222,21 @@ try {
     // Still standing in the marker after the failure: it does not start again by itself.
     T.tick(1);
     const noAuto = g.missions.active === null;
+    // G starts it from within 45 m of the marker, not from 100 m.
+    await T.at(def.start.x + 100, def.start.z);
+    T.tick(0.3);
+    g.setInput({ interactPressed: true });
+    T.tick(1 / 30, 1 / 30);
+    g.setInput({});
+    const keyFar = g.missions.active === null;
+    await T.at(def.start.x + 30, def.start.z);
+    T.tick(0.3);
+    const hint = document.getElementById('mission-hint').textContent;
+    g.setInput({ interactPressed: true });
+    T.tick(1 / 30, 1 / 30);
+    g.setInput({});
+    const keyNear = g.missions.active?.id;
+    g.missions.abort();
     await T.at(def.start.x + 60, def.start.z);
     T.tick(1);
     await T.at(def.start.x, def.start.z);
@@ -240,9 +255,9 @@ try {
       seen.push(g.missions.active ? g.missions.step().n : 'end');
     }
     T.tick(0.3);
-    return { noAuto, retry, fresh, seen, end: T.info(), gained: g.respect.value - respect0, saved: g.save.get('missions'), toast: document.getElementById('toast').textContent };
+    return { noAuto, keyFar, keyNear, hint, retry, fresh, seen, end: T.info(), gained: g.respect.value - respect0, saved: g.save.get('missions'), toast: document.getElementById('toast').textContent };
   });
-  check('obor retry: nothing carries over from the failed run, the marker waits until she has walked away, and it starts again clean', r.noAuto && r.retry?.id === 'obor' && r.fresh.n === 0 && r.fresh.sec > 328, r);
+  check('obor retry: nothing carries over from the failed run, the marker waits until she has walked away; G starts it from 30 m (with a hint) but not from 100 m; it starts again clean', r.noAuto && r.keyFar && r.keyNear === 'obor' && /G: inizia/.test(r.hint) && r.retry?.id === 'obor' && r.fresh.n === 0 && r.fresh.sec > 328, r);
   check('obor: five gates in order, taken high in the air, complete it and pay 90 Respect', JSON.stringify(r.seen) === JSON.stringify([1, 2, 3, 4, 'end']) && r.end.active === null && r.gained === 90 && r.saved.bucharest.join() === 'pensia,obor' && /Missione completata|Livello/.test(r.toast), r);
 
   // ---------- 3. Nepotul: the nephew must survive, the gang must fall ----------
@@ -441,6 +456,25 @@ try {
     return { list: g.missions.list.map((m) => m.status), next: g.missions.next(), restart: g.missions.start('pensia'), respect: g.respect.value, level: g.respect.level, rows: [...document.querySelectorAll('#overlay-missions div')].map((d) => d.className), markers: (g.minimap.markers.get('missions') || []).length, ups: T.events('level:up').map((e) => e.level) };
   });
   check('after the last mission nothing is next, a finished mission cannot be started again, the menu shows six done, the total is 60+90+110+130+150+300 = 840 Respect, level 5', r.next === null && !r.restart && r.rows.length === 6 && r.rows.every((c) => c === 'done') && r.respect === 840 && r.level === 5 && r.ups.join() === '2,3,4,5', r);
+
+  // ---------- a "race" step is gates in order, like a delivery ----------
+  r = await page.evaluate(async () => {
+    const g = window.__game, T = window.__t;
+    const d = g.missions.defs[0];
+    g.missions.defs.push({ id: 'race-test', title: 'Prova', where: 'Piața Unirii', start: d.start, giver: { name: 'Test', line: 'Corri.' }, time: 0, reward: { respect: 5 }, steps: [{ type: 'race', text: 'Gara', r: 8, points: [d.start, { x: d.start.x + 40, z: d.start.z }, { x: d.start.x + 80, z: d.start.z }] }] });
+    const respect0 = g.respect.value;
+    await T.at(d.start.x + 300, d.start.z);
+    T.tick(0.5);
+    const started = g.missions.start('race-test');
+    const seen = [];
+    for (const p of g.missions.defs[6].steps[0].points) {
+      g.player.pos.set(p.x, 5, p.z);
+      T.tick(0.1);
+      seen.push(g.missions.active ? g.missions.step().n : 'end');
+    }
+    return { started, seen, gained: g.respect.value - respect0 };
+  });
+  check('a race step is gates in order like a delivery and pays its reward', r.started && JSON.stringify(r.seen) === JSON.stringify([1, 2, 'end']) && r.gained === 5, r);
 
   // ======================= Brasov: the runner on its data =======================
   const bpage = await open(browser, 'city=brasov&shot=perch&lowq&seed=7', errors);

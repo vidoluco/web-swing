@@ -344,7 +344,7 @@ export function create(game) {
           m.position.set(t.x + t.nx * 0.35, gy + t.y, t.z + t.nz * 0.35);
           scene.add(m);
           speakers.push(m);
-          beams.set('t' + i, { x: t.x + t.nx * 3, z: t.z + t.nz * 3, y: gy, color: '#ff40c8', r: 2.2 });
+          beams.set('t' + i, { x: t.x - t.nz * 2.6 + t.nx * 0.6, z: t.z + t.nx * 2.6 + t.nz * 0.6, y: gy, color: '#ff40c8', r: 1.3, alpha: 0.7 }); // beside the speaker, not in front of it
           return { t, m, i };
         });
         S.n = S.def.targets.length;
@@ -408,6 +408,8 @@ export function create(game) {
     },
   };
 
+  STEPS.race = STEPS.deliver; // a race is gates in order like a delivery, just told differently
+
   function setCarry(label) {
     if (carry) {
       scene.remove(carry);
@@ -463,6 +465,10 @@ export function create(game) {
     game.minimap.setMarkers('missions', []);
     for (const sp of speakers.splice(0)) scene.remove(sp);
     setCarry(null);
+    hint('');
+    hintOn = false;
+    sayT = 0;
+    dom.say.classList.remove('show');
     r.step?.h.leave?.(r.step);
     for (const a of r.actors.values()) {
       if (keepActors) a.persist = false;
@@ -568,7 +574,7 @@ export function create(game) {
 
     update(dt) {
       if (dom.say && sayT > 0 && (sayT -= dt) <= 0) dom.say.classList.remove('show');
-      beams.update(dt);
+      beams.update(dt, game.camera.position);
       if ((markT -= dt) <= 0) {
         markT = 0.1;
         markers();

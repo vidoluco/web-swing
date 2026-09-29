@@ -33,7 +33,7 @@ const CSS = `
 .hp.buffs { gap: 12px; }
 .hp.buffs span { font-size: 14px; font-weight: 800; white-space: nowrap; }
 .hp.buffs em { font-style: normal; opacity: 0.75; margin-left: 4px; font-variant-numeric: tabular-nums; }
-@media (max-width: 600px) {
+@media (max-width: 600px), (max-height: 520px) {
   .hud-item.hp { height: 36px; padding: 3px 9px; gap: 6px; }
   .hp .big { font-size: 22px; }
   .hp.timer .tag, .hp.jars .tag { display: none; }
