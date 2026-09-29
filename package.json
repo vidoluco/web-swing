@@ -13,6 +13,7 @@
   "type": "module",
   "devDependencies": {
     "esbuild": "^0.28.2",
+    "geotiff": "^3.0.5",
     "playwright-core": "^1.63.0",
     "three": "^0.186.1"
   },

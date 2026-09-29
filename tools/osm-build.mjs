@@ -1,11 +1,18 @@
 // Turns cached Overpass JSON into game chunks: building prisms with estimated heights,
 // road ribbons, water, green areas, trees. Usage: node tools/osm-build.mjs <out> <raw1> [raw2 ...]
-import { readFileSync, writeFileSync, mkdirSync, rmSync, createReadStream } from 'node:fs';
+// The city origin, box, landmarks and terrain come from tools/city-config.mjs (ORIGIN="lat,lon" and
+// BBOX="south,west,north,east" in the environment override them); terrain from data/dem/<out>/ if built.
+import { readFileSync, writeFileSync, mkdirSync, rmSync, createReadStream, existsSync, copyFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { groundMap } from './ground-map.mjs';
+import { cityParams } from './city-config.mjs';
+import { loadDem } from './dem-lib.mjs';
 
 const [outName, ...raws] = process.argv.slice(2);
-const ORIGIN = { lat: 44.4268, lon: 26.1025 }; // Piata Unirii
+const CITY = cityParams(outName);
+const ORIGIN = CITY.origin;
+const DEM_DIR = process.env.DEM_DIR || `data/dem/${outName}`;
+const dem = existsSync(`${DEM_DIR}/dem.json`) ? loadDem(DEM_DIR, JSON.parse(readFileSync(`${DEM_DIR}/dem.json`, 'utf8'))) : null;
 const CHUNK = 400;
 const KX = Math.cos((ORIGIN.lat * Math.PI) / 180) * 111320;
 const KZ = 110574;
@@ -27,11 +34,14 @@ const poiKind = (t) => (/^(bar|pub|biergarten|nightclub)$/.test(t.amenity || '')
 const MAP_ONLY = /^(farmland|farmyard|orchard|vineyard|allotments|plant_nursery|greenfield|brownfield|industrial|railway|commercial|retail|construction|residential)$/;
 const mapAreas = [];
 // Everything outside the city box is dropped or clipped (extracts carry whole rivers and forests).
-const [S, W, N, E] = (process.env.BBOX || '44.33,25.96,44.54,26.23').split(',').map(Number);
+const [S, W, N, E] = CITY.bbox;
 const [BX0, BZ1] = proj({ lat: S, lon: W }), [BX1, BZ0] = proj({ lat: N, lon: E });
 const inBox = (x, z) => x >= BX0 && x <= BX1 && z >= BZ0 && z <= BZ1;
 const seen = new Set();
 const els = [];
+// Named places of the city config (any OSM element, by id), kept even though they are not drawn.
+const placeByRef = new Map((CITY.places || []).map((p) => [p.ref, p]));
+const placeEls = new Map();
 const projGeom = (g) => (g ? g.map((p) => [Math.round((p.lon - ORIGIN.lon) * KX * 10) / 10, Math.round(-(p.lat - ORIGIN.lat) * KZ * 10) / 10]) : null);
 // A .geojsonseq file (osmium export of a Geofabrik extract) is read as Overpass-like elements:
 // points become nodes, lines and single-ring way areas become ways, relation areas become
@@ -62,6 +72,8 @@ for (const f of raws) {
     const k = e.type[0] + e.id;
     if (seen.has(k)) continue;
     seen.add(k);
+    const place = placeByRef.get(k);
+    if (place) placeEls.set(place.key, e.type === 'node' ? { xz: projGeom([e])[0] } : e.type === 'way' ? { g: projGeom(e.geometry) } : { members: e.members.filter((m) => m.type === 'way').map((m) => ({ role: m.role, g: projGeom(m.geometry) })) });
     const tags = {};
     for (const t in e.tags || {}) if (KEEP.test(t)) tags[t] = e.tags[t];
     if (!wanted(tags)) continue;
@@ -144,6 +156,55 @@ const num = (v) => {
   const m = String(v).replace(',', '.').match(/-?\d+(\.\d+)?/);
   return m ? parseFloat(m[0]) : undefined;
 };
+
+// Lowest and highest terrain under a footprint: its vertices, points along the edges every metre, the
+// centroid and every terrain grid node inside (the bilinear surface has no other extremes).
+function footprintGround(b) {
+  let lo = Infinity, hi = -Infinity;
+  const put = (x, z) => {
+    const v = dem.groundAt(x, z);
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  };
+  const r = b.outer;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < r.length; i++) {
+    const [ax, az] = r[i], [bx, bz] = r[(i + 1) % r.length];
+    const n = Math.ceil(Math.hypot(bx - ax, bz - az));
+    for (let k = 0; k < n; k++) put(ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n);
+    x0 = Math.min(x0, ax); x1 = Math.max(x1, ax); z0 = Math.min(z0, az); z1 = Math.max(z1, az);
+  }
+  const inFootprint = (p) => inside(p, r) && !b.holes.some((h) => inside(p, h));
+  if (inFootprint(b.c)) put(b.c[0], b.c[1]);
+  const { x0: gx, z0: gz, step } = dem.meta;
+  for (let x = gx + Math.ceil((x0 - gx) / step) * step; x <= x1; x += step) {
+    for (let z = gz + Math.ceil((z0 - gz) / step) * step; z <= z1; z += step) if (inFootprint([x, z])) put(x, z);
+  }
+  return [lo, hi];
+}
+
+// The point that stands for a place: the node, the middle of a line, or the centre of an area.
+function placePoint(o) {
+  if (o.xz) return o.xz;
+  const rings = o.members ? assemble(o.members).map((p) => p.outer) : closed(o.g) ? [o.g] : [];
+  let A = 0, cx = 0, cz = 0;
+  for (const r of rings) {
+    let a = 0, x = 0, z = 0;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const f = r[j][0] * r[i][1] - r[i][0] * r[j][1];
+      a += f;
+      x += (r[j][0] + r[i][0]) * f;
+      z += (r[j][1] + r[i][1]) * f;
+    }
+    const s = Math.sign(a);
+    A += a * s; cx += x * s; cz += z * s;
+  }
+  if (A > 1e-6) return [cx / (3 * A), cz / (3 * A)];
+  const g = o.g, len = [0];
+  for (let i = 1; i < g.length; i++) len.push(len[i - 1] + Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]));
+  const i = Math.max(1, len.findIndex((l) => l >= len[len.length - 1] / 2)), t = (len[len.length - 1] / 2 - len[i - 1]) / (len[i] - len[i - 1] || 1);
+  return [g[i - 1][0] + (g[i][0] - g[i - 1][0]) * t, g[i - 1][1] + (g[i][1] - g[i - 1][1]) * t];
+}
 
 // ---------- buildings ----------
 const parts = [];
@@ -339,9 +400,10 @@ for (const e of els) {
             : t.leisure || t.landuse || t.natural === 'scrub' || t.natural === 'grassland' ? 'grass' : null;
   if (kind) for (const p of polygonsOf(e)) greens.push({ kind, outer: clean(p.outer), holes: p.holes.map(clean) });
 }
-// Fill woods, parks and cemeteries with trees where OSM has none mapped.
+// Fill woods, parks and cemeteries with trees where OSM has none mapped. A city with a "trees" table
+// in tools/city-config.mjs is planted per chunk tile instead (see plant below).
 const treeGrid = new Set(trees.map(([x, z]) => Math.floor(x / 12) + ',' + Math.floor(z / 12)));
-for (const g of greens) {
+for (const g of CITY.trees ? [] : greens) {
   const dens = g.kind === 'wood' ? 70 : g.kind === 'cemetery' ? 90 : g.kind === 'grass' ? 420 : 0;
   if (!dens) continue;
   const a = Math.abs(area(g.outer));
@@ -373,7 +435,10 @@ let bi = 0;
 for (const b of buildings) {
   if (!inBox(b.c[0], b.c[1])) continue;
   const st = styleOf(b);
-  chunkOf(b.c[0], b.c[1]).b.push([st.s, st.colour, Math.round(b.minH * 10) / 10, b.h, st.roof, (bi++ * 7919) % 1000, flat(b.outer), b.holes.map(flat), b.t.name || '']);
+  // With terrain the prism runs from the lowest ground under the footprint (plus min_height) to the
+  // highest ground plus the height, so the walls always reach the ground.
+  const [gLo, gHi] = dem ? footprintGround(b) : [0, 0];
+  chunkOf(b.c[0], b.c[1]).b.push([st.s, st.colour, dem ? Math.round((gLo + b.minH) * 100) / 100 : Math.round(b.minH * 10) / 10, dem ? Math.round((gHi + b.h) * 100) / 100 : b.h, st.roof, (bi++ * 7919) % 1000, flat(b.outer), b.holes.map(flat), b.t.name || '']);
 }
 // Lines are split per chunk by their first vertex; long lines are cut into pieces so culling works.
 function pushLine(list, item) {
@@ -427,7 +492,31 @@ function tilePolygon(outer, holes, put) {
   }
 }
 for (const w of waters) tilePolygon(w.outer, w.holes, (c, o, hs) => c.w.push([flat(o), hs.map(flat)]));
-for (const g of greens) tilePolygon(g.outer, g.holes, (c, o, hs) => c.g.push([g.kind, flat(o), hs.map(flat)]));
+// With a "trees" table (m2 per tree by green kind) each tile is planted on its own, so a forest of many
+// square kilometres costs no more per tile than a park and the point-in-polygon tests stay on small rings.
+function plant(o, hs, kind) {
+  const dens = CITY.trees[kind];
+  const a = Math.abs(area(o)) - hs.reduce((sum, h) => sum + Math.abs(area(h)), 0);
+  const n = dens ? Math.floor(a / dens) : 0;
+  if (!n) return;
+  const xs = o.map((p) => p[0]), zs = o.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+  const maxTries = Math.ceil((n * (x1 - x0) * (z1 - z0)) / a) * 3;
+  let placed = 0;
+  for (let tries = 0; placed < n && tries < maxTries; tries++) {
+    const p = [x0 + rnd() * (x1 - x0), z0 + rnd() * (z1 - z0)];
+    if (!inside(p, o) || hs.some((h) => inside(p, h))) continue;
+    if (treeGrid.has(Math.floor(p[0] / 12) + ',' + Math.floor(p[1] / 12))) continue;
+    trees.push([Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10, 1]);
+    placed++;
+  }
+}
+for (const g of greens) {
+  tilePolygon(g.outer, g.holes, (c, o, hs) => {
+    c.g.push([g.kind, flat(o), hs.map(flat)]);
+    if (CITY.trees) plant(o, hs, g.kind);
+  });
+}
 for (const [x, z, kind, name] of pois) if (inBox(x, z)) chunkOf(x, z).p.push([Math.round(x * 10) / 10, Math.round(z * 10) / 10, kind, name]);
 for (const t of trees) if (inBox(t[0], t[1])) chunkOf(t[0], t[1]).t.push(Math.round(t[0] * 10) / 10, Math.round(t[1] * 10) / 10);
 
@@ -435,6 +524,10 @@ const dir = `public/city/${outName}`;
 rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 const index = { origin: ORIGIN, chunk: CHUNK, chunks: [] };
+if (dem) {
+  copyFileSync(`${DEM_DIR}/dem.bin`, `${dir}/dem.bin`);
+  index.dem = dem.meta;
+}
 let bytes = 0;
 for (const c of chunks.values()) {
   const body = JSON.stringify({ b: c.b, r: c.r, w: c.w, g: c.g, t: c.t, rl: c.rl, p: c.p });
@@ -504,11 +597,23 @@ for (const c of chunks.values()) {
 // Landmarks by name for spawn points and the minimap.
 const landmarks = [];
 for (const b of buildings) {
-  if (!b.t.name) continue;
-  if (b.h > 45 || /Palatul Parlamentului|Ateneul|Arcul de Triumf|Casa Presei|Sky Tower|Palatul CEC|Intercontinental/i.test(b.t.name)) landmarks.push({ name: b.t.name, x: Math.round(b.c[0]), z: Math.round(b.c[1]), h: b.h });
+  if (!b.t.name || !CITY.landmarks) continue;
+  if (CITY.landmarks(b)) landmarks.push({ name: b.t.name, x: Math.round(b.c[0]), z: Math.round(b.c[1]), h: b.h });
 }
 index.landmarks = landmarks.sort((a, b) => b.h - a.h).slice(0, 60);
+// Named places of the city config: a point in game space (and the ground height there with terrain).
+for (const p of CITY.places || []) {
+  const o = placeEls.get(p.key);
+  if (!o) {
+    console.warn(`place ${p.key} (${p.ref}) not in the input`);
+    continue;
+  }
+  const [x, z] = placePoint(o);
+  const at = { key: p.key, name: p.name, x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 };
+  if (dem) at.y = Math.round(dem.groundAt(x, z) * 10) / 10;
+  index.landmarks.push(at);
+}
 writeFileSync(`${dir}/index.json`, JSON.stringify(index));
 console.log(`${pois.length} places to drink (${pois.filter((p) => p[2] === 0).length} bars)`);
 console.log(`${buildings.length} buildings (${estimated} heights estimated), ${roads.length} roads, ${waters.length} water, ${greens.length} green, ${trees.length} trees, ${chunks.size} chunks, ${(bytes / 1e6).toFixed(1)} MB`);
-console.log('tallest:', index.landmarks.slice(0, 12).map((l) => `${l.name} ${l.h}m`).join(' | '));
+if (landmarks.length) console.log('tallest:', landmarks.slice(0, 12).map((l) => `${l.name} ${l.h}m`).join(' | '));
