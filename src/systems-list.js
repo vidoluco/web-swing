@@ -4,4 +4,5 @@
 export default [
   () => import('./pedestrians.js'), // living:
   () => import('./trams.js'), // living:
+  () => import('./strays.js'), // living:
 ];
