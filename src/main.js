@@ -419,7 +419,7 @@ function tick(dt) {
   const mouse = pilot ? [0, 0] : input.consumeMouse();
   if (inp.suitPressed) {
     hero.toggleSuit();
-    hud.toast(hero.suit === 'symbiote' ? 'Costume nero' : 'Costume classico');
+    hud.toast(hero.suitLabel || (hero.suit === 'symbiote' ? 'Costume nero' : 'Costume classico')); // bunica: the basma colour
   }
   if (inp.resetPressed) {
     dropCar();
@@ -538,7 +538,7 @@ let aerial = null;
 function render() {
   if (aerial) {
     camera.position.set(aerial[0], aerial[1], aerial[2]);
-    camera.lookAt(aerial[3], 0, aerial[4]);
+    camera.lookAt(aerial[3], aerial[5] ?? 0, aerial[4]); // bunica: optional look-at height for close-ups
     camera.updateMatrixWorld();
   }
   if (params.has('nopost')) {
@@ -642,8 +642,8 @@ const game = {
   shot: applyShot,
   goTo,
   // Test view from above: fixed camera looking at (tx, 0, tz), with the fog pushed back.
-  aerial(x, y, z, tx, tz) {
-    aerial = [x, y, z, tx, tz];
+  aerial(x, y, z, tx, tz, ty) {
+    aerial = [x, y, z, tx, tz, ty];
     scene.fog.near = 3000;
     scene.fog.far = 26000;
     camera.far = 40000;
