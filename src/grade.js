@@ -136,19 +136,20 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
     float wsum = 1.0;
     for (int i = 0; i < 8; i++) {
       vec2 q = uv + OFF[i] * texelSize;
-      float w = exp(-abs(linZ(q) - z0) / (0.05 * z0 + 0.3));
+      float w = exp(-abs(linZ(q) - z0) / (0.14 * z0 + 0.6));
       acc += texture2D(inputBuffer, q).rgb * w;
       wsum += w;
     }
-    c = mix(c, look(acc / wsum), 0.85);
+    c = mix(c, look(acc / wsum), 0.8);
     float L = dot(c, LW);
     float x = L * uBands;
     float fr = fract(x);
     float w = fwidth(x) * 1.5 + 0.05;
     float Lq = (floor(x) + smoothstep(0.5 - w, 0.5 + w, fr)) / uBands;
+    Lq = mix(mix(0.1, 0.03, uNight), 1.0, Lq); // the darkest band is a shadow colour, not black
     c *= (Lq + 0.03) / (L + 0.03);
     float l2 = dot(c, LW);
-    c = mix(vec3(l2), c, 1.12);
+    c = mix(vec3(l2), c, 1.25);
     c = clamp(c, 0.0, 1.0);
 
     // Ink: depth discontinuities (second difference, so slanted walls stay clean) and strong colour steps.

@@ -88,3 +88,4 @@ cd ../.. && node --max-old-space-size=12000 tools/osm-build.mjs bucharest data/p
 | Cars | Kenney Car Kit, CC0 |
 | Hero | Mixamo X Bot, from the three.js examples |
 | Textures | ambientCG, CC0; water normals from the three.js examples |
+| Sky photos (light) | Poly Haven, CC0: kloofendal_48d_partly_cloudy_puresky, belfast_sunset_puresky, qwantani_dusk_2_puresky, qwantani_moonrise_puresky (Greg Zaal, Jarod Guest, Dimitrios Savva), see `assets/CREDITS.md` |

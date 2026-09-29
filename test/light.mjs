@@ -157,18 +157,19 @@ try {
           for (let k = 0; k < 3; k++) v += (d[i + k] - mean[k]) ** 2 / (n * 3);
           colors.add((d[i] >> 4) * 256 + (d[i + 1] >> 4) * 16 + (d[i + 2] >> 4));
         }
-        return { style: g.env.style, mean: mean.map((m) => Math.round(m)), std: Math.round(Math.sqrt(v)), colors: colors.size };
+        return { style: g.env.style, mean: mean.map((m) => Math.round(m)), std: Math.round(Math.sqrt(v)), colors: colors.size, thumb: Array.from(d) };
       });
       shots[id].newErrors = errors.slice(before);
       await page.close();
     }
     for (const id of ['a', 'b', 'c']) {
       const s = shots[id];
-      check(`style ${id.toUpperCase()}: renders a real picture without console errors`, s.style === id && s.std > 25 && s.colors > 40 && s.newErrors.length === 0, s);
+      check(`style ${id.toUpperCase()}: renders a real picture without console errors`, s.style === id && s.std > 25 && s.colors > 40 && s.newErrors.length === 0, { ...s, thumb: undefined });
     }
-    const dist = (p, q) => Math.hypot(...p.map((v, i) => v - q[i]));
-    check('the three styles do not look alike (pairwise colour distance)', dist(shots.a.mean, shots.b.mean) > 6 && dist(shots.b.mean, shots.c.mean) > 6 && dist(shots.a.mean, shots.c.mean) > 6,
-      { ab: dist(shots.a.mean, shots.b.mean), bc: dist(shots.b.mean, shots.c.mean), ac: dist(shots.a.mean, shots.c.mean) });
+    // Mean absolute difference per pixel and channel between two 64x36 thumbnails.
+    const diff = (p, q) => Math.round((p.reduce((s, v, i) => s + Math.abs(v - q[i]), 0) / p.length) * 10) / 10;
+    const d = { ab: diff(shots.a.thumb, shots.b.thumb), bc: diff(shots.b.thumb, shots.c.thumb), ac: diff(shots.a.thumb, shots.c.thumb) };
+    check('the three styles do not look alike (mean pixel difference between the pictures)', d.ab > 8 && d.bc > 8 && d.ac > 8, d);
   }
 
   // ---------- the style is saved and restored ----------
