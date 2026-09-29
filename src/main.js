@@ -411,8 +411,10 @@ const hand = new THREE.Vector3();
 let fpsAcc = 0, fpsN = 0, fps = 0;
 
 function tick(dt) {
+  dt = game.combat?.scaleDt(dt) ?? dt; // combat: the hit stop
   const time = (game.time += dt);
-  const inp = pilot ? pilotState(dt) : input.state;
+  const rawInp = pilot ? pilotState(dt) : input.state;
+  const inp = game.combat?.filterInput(rawInp) ?? rawInp; // combat: a click may be a blow, Space a dodge
   const mouse = pilot ? [0, 0] : input.consumeMouse();
   if (inp.suitPressed) {
     hero.toggleSuit();
