@@ -9,6 +9,14 @@ export class Minimap {
     this.scale = 1.1; // px per metre on a 200 px wide map
     this.t = 0;
     this.cells = city.mmCells;
+    this.markers = new Map(); // owner id -> [{ x, z, color, shape, label? }]
+  }
+
+  // Each system owns its own set of markers; a new call replaces it, an empty list clears it.
+  // shape is 'dot', 'ring' or 'square'. Markers off the map stick to its edge, pointing the way.
+  setMarkers(owner, list) {
+    if (list?.length) this.markers.set(owner, list);
+    else this.markers.delete(owner);
   }
 
   toggleZoom() {
@@ -19,6 +27,55 @@ export class Minimap {
     g.moveTo(pts[0], pts[1]);
     for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
     g.closePath();
+  }
+
+  drawMarkers(g, W, H, s, pos, yaw) {
+    if (!this.markers.size) return;
+    const k = W / (this.c.clientWidth || 190); // canvas pixels per CSS pixel, so sizes and labels hold on a phone
+    const cos = Math.cos(yaw), sin = Math.sin(yaw), pad = 8 * k;
+    g.font = `700 ${Math.round(13 * k)}px system-ui, sans-serif`;
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    for (const list of this.markers.values()) {
+      for (const m of list) {
+        const a = (m.x - pos.x) * s, b = (m.z - pos.z) * s;
+        let x = cos * a - sin * b, y = sin * a + cos * b;
+        const off = Math.abs(x) > W / 2 - pad || Math.abs(y) > H / 2 - pad;
+        if (off) {
+          const t = Math.min((W / 2 - pad) / (Math.abs(x) || 1e-6), (H / 2 - pad) / (Math.abs(y) || 1e-6));
+          x *= t;
+          y *= t;
+        }
+        x += W / 2;
+        y += H / 2;
+        const r = (off ? 3.5 : 4.5) * k;
+        g.globalAlpha = off ? 0.8 : 1;
+        g.strokeStyle = '#000';
+        g.fillStyle = m.color;
+        g.beginPath();
+        if (m.shape === 'square') g.rect(x - r, y - r, r * 2, r * 2);
+        else g.arc(x, y, m.shape === 'ring' ? r * 1.2 : r, 0, Math.PI * 2);
+        if (m.shape === 'ring') {
+          g.lineWidth = 4.6 * k;
+          g.stroke();
+          g.strokeStyle = m.color;
+          g.lineWidth = 2.4 * k;
+          g.stroke();
+        } else {
+          g.lineWidth = 1.5 * k;
+          g.fill();
+          g.stroke();
+        }
+        if (m.label && !off) {
+          g.lineWidth = 3 * k;
+          g.strokeStyle = 'rgba(0,0,0,0.8)';
+          g.strokeText(m.label, x + r + 3 * k, y);
+          g.fillStyle = '#fff';
+          g.fillText(m.label, x + r + 3 * k, y);
+        }
+      }
+    }
+    g.globalAlpha = 1;
   }
 
   draw(dt, pos, yaw, anchor) {
@@ -87,6 +144,7 @@ export class Minimap {
       g.stroke();
     }
     g.restore();
+    this.drawMarkers(g, W, H, s, pos, yaw);
     g.fillStyle = '#ffd400';
     g.strokeStyle = '#000';
     g.lineWidth = 2;

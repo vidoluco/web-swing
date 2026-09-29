@@ -14,13 +14,26 @@ import { Minimap } from './minimap.js';
 import { Sfx } from './audio.js';
 import { Traffic } from './traffic.js';
 import { Drinks, Drunk, DrunkEffect, Voice } from './drinks.js';
-import { clamp } from './config.js';
+import { clamp, mulberry32 } from './config.js';
+import { CITIES } from './cities.js';
+import { Events } from './events.js';
+import { Save } from './save.js';
+import { Hud } from './hud.js';
+import { Systems } from './systems.js';
+import { showMapSelect, mapSelectQuery } from './mapselect.js';
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.has('demo');
 const SHOT = params.get('shot');
 const LOWQ = params.has('lowq');
-const CITY = params.get('city') || 'bucharest';
+const save = new Save();
+// A plain start shows the map selection, and choosing a card reloads with ?city=. Demo and shot links skip it.
+if (!params.has('city') && !DEMO && !SHOT) {
+  showMapSelect(save, params);
+  await new Promise(() => {});
+}
+const cityId = params.get('city') || 'bucharest';
+const cfg = CITIES[cityId];
 const TUNE = {
   exp: +(params.get('exp') || 1.0),
   tm: params.get('tm') || 'aces',
@@ -33,6 +46,17 @@ const TUNE = {
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
 const setLoading = (t) => ($('loading-text').textContent = t);
+// Stops on a message, with a way back to the map selection.
+async function stopWith(msg) {
+  setLoading(msg);
+  const back = document.createElement('a');
+  back.className = 'btn';
+  back.href = mapSelectQuery(params);
+  back.textContent = 'Cambia mappa';
+  $('loading').append(back);
+  await new Promise(() => {});
+}
+if (!cfg) await stopWith(`Mappa sconosciuta: ${cityId}`);
 
 // ---------- renderer, sky, light ----------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, stencil: false, powerPreference: 'high-performance' });
@@ -132,8 +156,13 @@ composer.addPass(new EffectPass(camera, new SMAAEffect()));
 // ---------- world ----------
 setLoading('Carico le texture…');
 const textures = loadTextures('textures');
-setLoading('Ricostruisco Bucarest…');
-const city = await OsmCity.load(`city/${CITY}`, scene, envMap, textures, (p) => setLoading(`Ricostruisco Bucarest… ${Math.round(p * 100)}%`));
+setLoading(`Ricostruisco ${cfg.label}…`);
+const city = await OsmCity.load(`city/${cityId}`, scene, envMap, textures, (p) => setLoading(`Ricostruisco ${cfg.label}… ${Math.round(p * 100)}%`), cfg.spawnFacing).catch(async (e) => {
+  console.error(e);
+  await stopWith(`Mappa non disponibile: ${cfg.label}`);
+});
+save.set('city', cityId);
+document.title = `Web Swing · ${cfg.label}`;
 setLoading('Carico il personaggio…');
 let hero;
 try {
@@ -158,6 +187,9 @@ const rig = new CameraRig(camera, city);
 rig.yaw = city.spawnYaw || 0;
 const minimap = new Minimap(city, $('minimap'), $('compass'));
 const sfx = new Sfx();
+const events = new Events();
+const hud = new Hud({ panels: $('hud-panels'), toast: $('toast'), objective: $('objective') });
+const rng = mulberry32(+params.get('seed') || 20260929);
 
 const webMat = new THREE.MeshBasicMaterial({ color: 0xf4f4f4, transparent: true });
 const web = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).translate(0, 0.5, 0), webMat);
@@ -175,6 +207,7 @@ let crashSaid = 0, wastedSaid = 0;
 const carProxy = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), mode: 'drive', poseName: () => 'drive' };
 function enterCar(c) {
   traffic.steal(c);
+  events.emit('car:stolen', { car: c });
   driving = c;
   player.mode = 'drive';
   player.wall = player.zip = null;
@@ -221,25 +254,14 @@ function placeOnRoof(box, pos, yaw) {
   rig.yaw = yaw;
 }
 
-// Places across the city on the number keys, positions taken from the OSM data (metres from Piata Unirii).
-const SPOTS = [
-  ['Piața Unirii', 0, 0],
-  ['Palatul Parlamentului', -1218, -68],
-  ['Ateneul Român', -420, -1606],
-  ['Piața Victoriei', -1381, -2833],
-  ['Arcul de Triumf', -1938, -4466],
-  ['Parcul Herăstrău', -1049, -5167],
-  ['Sky Tower', 177, -5658],
-  ['Casa Presei Libere', -2498, -6021],
-  ['Arena Națională', 3972, -1151],
-  ['Drumul Taberei', -5643, 739],
-];
+// Places across the city on the number keys (cities.js), positions taken from the OSM data.
 let travelling = false;
 async function goTo(i) {
-  const [name, x, z] = SPOTS[i];
+  if (!cfg.spots[i]) return;
+  const [name, x, z] = cfg.spots[i];
   dropCar();
   travelling = true;
-  toast(name + '…');
+  hud.toast(name + '…');
   city.focus = { x, z };
   await city.streamAround(x, z, 900);
   const r = city.roofNear(x, z, 500);
@@ -254,11 +276,10 @@ async function goTo(i) {
   rig.dist = 6.5;
   city.focus = null;
   travelling = false;
-  toast(name);
+  hud.toast(name);
 }
 
-// Waypoints: Palace of Parliament, Cismigiu, Universitate, Piata Unirii.
-const WAYPOINTS = [[-1150, -60], [-860, -1150], [0, -960], [30, 0]];
+const WAYPOINTS = cfg.waypoints.length ? cfg.waypoints : [[0, 0]];
 let pilot = null;
 function startDemo() {
   applyShot('perch');
@@ -346,6 +367,16 @@ overlay.addEventListener('click', () => {
   overlay.classList.add('hidden');
   started = true;
 });
+$('overlay-sub').textContent = `${cfg.label} vera, da OpenStreetMap. Fisica del pendolo, tutto nel browser`;
+if (cfg.spots.length) {
+  const k = document.createElement('b');
+  k.textContent = '1–9, 0';
+  $('keys-spots').append(k, ` vai a ${cfg.spots.map((sp) => sp[0]).join(', ')}`);
+}
+$('overlay-map').addEventListener('click', (e) => {
+  e.stopPropagation();
+  location.assign(mapSelectQuery(params));
+});
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement && !DEMO && !SHOT) {
     started = false;
@@ -374,35 +405,27 @@ function updateHint() {
   }
 }
 
-let toastTimer = 0;
-function toast(msg) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  toastTimer = 1.8;
-}
-
 // ---------- loop ----------
 const camDir = new THREE.Vector3();
 const hand = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
-let time = 0;
 let fpsAcc = 0, fpsN = 0, fps = 0;
 
 function tick(dt) {
-  time += dt;
+  const time = (game.time += dt);
   const inp = pilot ? pilotState(dt) : input.state;
   const mouse = pilot ? [0, 0] : input.consumeMouse();
   if (inp.suitPressed) {
     hero.toggleSuit();
-    toast(hero.suit === 'symbiote' ? 'Costume nero' : 'Costume classico');
+    hud.toast(hero.suit === 'symbiote' ? 'Costume nero' : 'Costume classico');
   }
   if (inp.resetPressed) {
     dropCar();
     applyShot('perch');
-    toast('Di nuovo in cima');
+    hud.toast('Di nuovo in cima');
   }
   if (inp.mapPressed) minimap.toggleZoom();
+  if (inp.pausePressed) document.exitPointerLock?.();
   if (inp.spot !== undefined && inp.spot >= 0 && !travelling) goTo(inp.spot);
 
   drunk.update(dt);
@@ -498,12 +521,13 @@ function tick(dt) {
   player.events.length = 0;
   sfx.update(player.speed);
 
+  systems.update(dt);
   city.update(dt, time, camera.position);
   if (su.time) su.time.value = time;
   camera.updateMatrixWorld();
   csm.update();
   minimap.draw(dt, player.pos, rig.yaw, player.webFade > 0 ? player.anchor : null);
-  if (toastTimer > 0 && (toastTimer -= dt) <= 0) $('toast').classList.remove('show');
+  hud.update(dt);
   input.endFrame();
 }
 
@@ -544,8 +568,30 @@ function updateHud() {
   $('hud').textContent = `${kmh} km/h · ${Math.round(player.pos.y)} m${booze}${params.has('fps') ? ` · ${Math.round(fps)} fps` : ''}`;
 }
 
-// Hooks for automated checks.
-window.__game = {
+// The shared game object, also reachable as window.__game with the hooks for automated checks.
+const game = {
+  scene,
+  camera,
+  renderer,
+  params,
+  cityId,
+  city,
+  player,
+  hero,
+  traffic,
+  drinks,
+  drunk,
+  voice,
+  input,
+  events,
+  actors: null, // PLACEHOLDER: the actors module (src/actors.js) creates game.actors here once it lands
+  hud,
+  save,
+  minimap,
+  sfx,
+  time: 0, // seconds of game time, advanced by tick
+  rng, // seeded, ?seed=N to change it
+  systems: null,
   advance(seconds, step = 1 / 30) {
     manual = true;
     for (let t = 0; t < seconds && !travelling; t += step) tick(step);
@@ -585,6 +631,7 @@ window.__game = {
       driving: driving ? driving.type : null,
       drunk: Math.round(drunk.level * 10) / 10,
       cars: traffic.cars.length,
+      city: cityId,
       loaded: [...city.recs.values()].filter((r) => r.state === 'loaded').length,
       prisms: city.prisms.length,
     };
@@ -601,34 +648,33 @@ window.__game = {
   },
   rig,
   setInput(o) {
-    input.override = o ? { moveX: 0, moveY: 0, jump: false, jumpPressed: false, swing: false, swingPressed: false, zipPressed: false, suitPressed: false, resetPressed: false, mapPressed: false, carPressed: false, ...o } : null;
+    input.override = o ? { moveX: 0, moveY: 0, jump: false, jumpPressed: false, swing: false, swingPressed: false, zipPressed: false, suitPressed: false, resetPressed: false, mapPressed: false, carPressed: false, attackPressed: false, throwPressed: false, tiePressed: false, interactPressed: false, pausePressed: false, ...o } : null;
   },
   look(yaw, pitch) {
     rig.yaw = yaw;
     if (pitch !== undefined) rig.pitch = pitch;
   },
-  player,
-  city,
-  hero,
   pointIn: pointInPrism2D,
   pilot: () => pilot,
   stopPilot() {
     pilot = null;
   },
-  traffic,
-  drinks,
-  drunk,
-  voice,
   enterCar,
   exitCar,
   driving: () => driving,
   ready: false,
 };
+window.__game = game;
+hud.game = game;
+const systems = (game.systems = new Systems(game));
+await systems.load();
 
 if (params.has('spot')) await goTo(+params.get('spot'));
 // The demo starts with the whole streaming ring loaded, so every run swings through the same city.
 if (DEMO) await city.streamAround(city.spawn.x, city.spawn.z, 1900);
-window.__game.ready = true;
+systems.start();
+events.emit('city:change', { id: cityId });
+game.ready = true;
 tick(0.001);
 $('loading').classList.add('hidden');
 requestAnimationFrame(frame);
