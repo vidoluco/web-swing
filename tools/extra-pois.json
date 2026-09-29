@@ -1,0 +1,56 @@
+{
+  "bucharest": {
+    "places": [
+      {
+        "name": "Anagram",
+        "kind": 2,
+        "lat": 44.4587038,
+        "lon": 26.0368386,
+        "street": "Strada Mehadia",
+        "address": "Strada Mehadia 43, Platforma Industrială Grantmetal, 060543 București (Anagram Brewery and Lakeside Taproom)",
+        "position": "OSM node n12706664516 (craft=brewery, so the amenity filter of the extract drops it); Wanderlog gives 44.458727, 26.036784, 5 m away",
+        "sources": [
+          { "url": "https://anagrambrewing.com/taproom/", "says": "Lakeside Taproom, Address: Mehadia 43 street, Bucharest" },
+          { "url": "https://www.tripadvisor.com/Attraction_Review-g294458-d25929659-Reviews-Anagram_Brewery_And_Lakeside_Taproom-Bucharest.html", "says": "Strada Mehadia 43 Industrial Patform Grantmetal, Bucharest 060543 Romania" },
+          { "url": "https://wanderlog.com/place/details/6363532/anagram-brewery", "says": "Platforma Industrială Grantmetal, Strada Mehadia 43, 060543 București, Romania" }
+        ]
+      },
+      {
+        "name": "Hop Hooligans",
+        "kind": 2,
+        "lat": 44.4405398,
+        "lon": 26.104494,
+        "street": "Strada Jean Louis Calderon",
+        "address": "Strada Jean Louis Calderon 49, București (Hop Hooligans Taproom)",
+        "position": "OSM node n11244303337 (craft=brewery, addr:housenumber 49); the address node n2380740354 for no. 49 is 13 m away",
+        "sources": [
+          { "url": "https://www.hophooligans.ro/pages/hop-hooligans-taproom", "says": "Str. Jean Louis Calderon 49, Bucharest" },
+          { "url": "https://untappd.com/v/hop-hooligans-taproom/10165768", "says": "Strada Jean-Louis Calderon 49 București, București" },
+          { "url": "https://restaurantguru.com/amp/Hop-Hooligans-Taproom-Craft-Beer-Bar-Bucharest", "says": "Str. Jean Louis Calderon 49, Bucharest, Romania" }
+        ]
+      },
+      {
+        "name": "Ironic Taproom",
+        "kind": 2,
+        "lat": 44.4339934,
+        "lon": 26.0950726,
+        "street": "Strada Domnița Anastasia",
+        "address": "Strada Domnița Anastasia 4, București",
+        "position": "OSM node n12790924201 (amenity=bar, addr:housenumber 4), already in the extract as an ordinary bar: this entry replaces it",
+        "sources": [
+          { "url": "https://www.tripadvisor.com/Attraction_Review-g294458-d25468673-Reviews-Ironic_Taproom-Bucharest.html", "says": "Strada Domnița Anastasia 4, Bucharest 010403 Romania" },
+          { "url": "https://restaurantguru.com/Ironic-taproom-Bucharest", "says": "Strada Domnița Anastasia 4, Bucharest, Romania" }
+        ],
+        "note": "Untappd lists it as Domnita Anastasia 14, the odd one out against every other source and the OSM address"
+      }
+    ],
+    "rejected": [
+      {
+        "name": "Anagram Downtown Taproom",
+        "reason": "only Wanderlog gives an address (Strada Gabroveni 61, 44.431044, 26.103052); the Anagram site says it lives inside the Mexikanos restaurant and gives no street. One source, so it stays out",
+        "lat": 44.431044,
+        "lon": 26.103052
+      }
+    ]
+  }
+}

@@ -3,4 +3,5 @@
 // Each module exports `create(game)` returning { name, init?(), update(dt), onCityChange?(id), dispose?() }.
 export default [
   () => import('./combat.js'),
+  () => import('./bars.js'), // bars: music from the supreme bars
 ];

@@ -21,7 +21,7 @@ The hero is still the Spider-Man rig on `main`. The next round replaces it with 
 |---|---|
 | Play | `npm run play` (builds, serves on http://127.0.0.1:5178/ and opens the browser) |
 | Demo (autopilot) | http://127.0.0.1:5178/?demo |
-| Tests | `node test/physics.mjs`: 12 scripted checks in headless Chromium, exit code 1 on failure. `node test/core.mjs`: the foundation (systems, events, save, hud, map selection). `PORT=n` picks the test server port |
+| Tests | `node test/physics.mjs`: 12 scripted checks in headless Chromium, exit code 1 on failure. `node test/core.mjs`: the foundation (systems, events, save, hud, map selection). `node test/voice.mjs`: the lines, the audio files and the voice player. `node test/bars.mjs`: the supreme bars. `PORT=n` picks the test server port |
 | Videos | `node test/showcase.mjs` → `shots/showcase.mp4`; `node test/record.mjs 30` → `shots/preview.mp4` |
 | Frame rate | `node test/perf.mjs demo 30` (real-time, on the GPU) |
 
@@ -36,9 +36,12 @@ The hero is still the Spider-Man rig on `main`. The next round replaces it with 
 | E or right click | zip to the point under the crosshair |
 | F | steal the car next to you, or get out |
 | 1 to 9, 0 | Piața Unirii, Parliament, Ateneu, Piața Victoriei, Arcul de Triumf, Herăstrău, Sky Tower, Casa Presei, Arena Națională, Drumul Taberei |
+| Alt + 1 to 3 | Anagram, Hop Hooligans, Ironic Taproom (the supreme bars) |
 | V, M, R | suit, minimap zoom, back to the start roof |
 
-Walk over the drinks in front of bars and kiosks (yellow dots on the minimap): a beer counts one, a țuică two, and it wears off in a few minutes. Stealing, drinking and crashing get a line in Romanian, with an Italian subtitle, spoken by the system's Romanian voice when there is one (Ioana on macOS).
+Walk over the drinks in front of bars and kiosks (yellow dots on the minimap): a beer counts one, a țuică two, and it wears off in a few minutes. Stealing, drinking and crashing get a line in Romanian, with an Italian subtitle, spoken in one of two Romanian voices that take turns (see Voices below; without the audio files only the subtitle shows).
+
+Three bars are supreme, marked by a pink star on the minimap, a big golden mug and a sign at the door: Anagram (Strada Mehadia 43), Hop Hooligans (Strada Jean Louis Calderon 49) and Ironic Taproom (Strada Domnița Anastasia 4). Walking into the circle takes you to 100% drunk at once, with a line of its own and a synthesised tune from the bar while you are near. `Alt + 1`, `Alt + 2`, `Alt + 3` go there. They are not tagged as bars in OpenStreetMap (Anagram and Hop Hooligans are `craft=brewery`), so `tools/extra-pois.json` adds them: each needs sources on two different sites and a street that exists in the input, or the build stops.
 
 ## What is in it
 
@@ -47,7 +50,7 @@ Walk over the drinks in front of bars and kiosks (yellow dots on the minimap): a
 | City | 212,734 buildings, 65,736 road pieces, water, parks and 346,000 trees inside 44.33–44.54 N, 25.96–26.23 E; streamed in 400 m chunks within about 2 km, a box per building beyond that, and a land-use map of the whole city on the far ground |
 | Heights | OSM `height` and levels first, then the median of tagged neighbours, then the footprint; tagging errors capped |
 | Traffic | Up to 60 cars on the OSM roads around you, on the right-hand lane, turning where roads meet, queueing and stopping for you |
-| Drinks | 1,925 real places: 295 bars and pubs (beer and țuică) and kiosks or non-stops (beer), each with its name on a sign |
+| Drinks | 1,927 real places: 294 bars and pubs (beer and țuică), kiosks or non-stops (beer), each with its name on a sign, and 3 supreme bars (100% drunk) |
 | Movement | pendulum on an inelastic rope, anchors on building faces, wall crawl and vault, zip, water respawn |
 | Rendering | CSM shadows, N8AO, ACES tone mapping, SMAA, interior-mapped windows, PBR ground, double vision when drunk |
 
@@ -67,6 +70,17 @@ URL flags: `?lowq` for weaker GPUs, `?fps` for the frame rate, `?cars=N` for tra
 | Save | `game.save.get(key, fallback)` and `set(key, value)`, JSON under `webswing.v1` in localStorage, in memory when storage is blocked |
 
 Event names and payloads: `hit {target, dmg, by}`, `actor:down {actor}`, `actor:tied {actor}`, `crime:start {id, kind, pos}`, `crime:end {id, result}`, `wanted {stars}`, `busted`, `respect {amount, why}`, `mission:start {id}`, `mission:end {id, result}`, `car:stolen {car}`, `player:down`, `city:change {id}`.
+
+## Voices
+
+Bunica's lines are in `src/lines.js` (Romanian, Italian subtitle, at least three variants per kind, the țuică toast "Să trăiască Bucureștiul!" or "Să trăiască Brașovul!" with the highest weight). The sound is generated once, offline, with the free neural voices of edge-tts and played as mp3 files: the browser speech synthesis is not used.
+
+```
+python3 tools/make-voice.py            # new or changed lines only; --force for all, --check to compare without network
+node build.mjs                         # the bundle embeds the durations of the audio it finds
+```
+
+The first run creates `./.venv` and installs edge-tts there. It writes `public/audio/voice/<kind>-<n>.a.mp3` (ro-RO-AlinaNeural, rate -35%, pitch -18Hz) and `.b.mp3` (ro-RO-EmilNeural), trims the silence at both ends with ffmpeg when it is installed, and writes `manifest.json`. The two voices take turns, and the more drunk she is the slower the playback (1.0 down to 0.85). `public/audio/voice/` is git ignored on purpose: edge-tts talks to a Microsoft service that is not an official API and the repository is public. Without the files the game runs the same and shows the subtitles only, and asks for no audio at all. Add new lines at the end of a kind in `src/lines.js`: the file name is the index.
 
 ## Rebuilding the city
 

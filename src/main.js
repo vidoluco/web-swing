@@ -13,7 +13,8 @@ import { CameraRig } from './camera.js';
 import { Minimap } from './minimap.js';
 import { Sfx } from './audio.js';
 import { Traffic } from './traffic.js';
-import { Drinks, Drunk, DrunkEffect, Voice } from './drinks.js';
+import { Drinks, Drunk, DrunkEffect } from './drinks.js';
+import { Voice } from './voice.js'; // voice:
 import { clamp, mulberry32 } from './config.js';
 import { CITIES } from './cities.js';
 import { Events } from './events.js';
@@ -376,7 +377,13 @@ $('overlay-sub').textContent = `${cfg.label} vera, da OpenStreetMap. Fisica del 
 if (cfg.spots.length) {
   const k = document.createElement('b');
   k.textContent = '1–9, 0';
-  $('keys-spots').append(k, ` vai a ${cfg.spots.map((sp) => sp[0]).join(', ')}`);
+  $('keys-spots').append(k, ` vai a ${cfg.spots.slice(0, 10).map((sp) => sp[0]).join(', ')}`);
+  if (cfg.spots.length > 10) {
+    // bars: more places than digit keys, Alt plus a digit reaches the next ten
+    const k2 = document.createElement('b');
+    k2.textContent = `Alt + 1–${cfg.spots.length - 10}`;
+    $('keys-spots').append(' · ', k2, ` vai a ${cfg.spots.slice(10).map((sp) => sp[0]).join(', ')}`);
+  }
 }
 $('overlay-map').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -485,7 +492,8 @@ function tick(dt) {
   if (drank) {
     drunk.drink(drank);
     sfx.play('gulp');
-    voice.say(drunk.level >= 6 && Math.random() < 0.5 ? 'wasted' : drank, drunk.amount);
+    voice.say(drank === 'supreme' ? `supreme.${drinks.supremeKey}` : drunk.level >= 6 && Math.random() < 0.5 ? 'wasted' : drank, drunk.amount); // voice:
+    if (drank === 'supreme') hud.toast(`${drinks.supremeName}: 100%`); // bars:
     wastedSaid = time;
   } else if (drunk.amount > 0.8 && time - wastedSaid > 25) {
     wastedSaid = time;
@@ -564,7 +572,7 @@ function frame(now) {
 
 function updateHud() {
   const kmh = Math.round(player.speed * 3.6);
-  const booze = drunk.beers + drunk.tuicas ? ` · 🍺 ${drunk.beers} · 🥃 ${drunk.tuicas} · ${'●'.repeat(Math.ceil(drunk.level))}${'○'.repeat(8 - Math.ceil(drunk.level))}` : '';
+  const booze = drunk.beers + drunk.tuicas + drunk.supremes ? ` · 🍺 ${drunk.beers} · 🥃 ${drunk.tuicas} · ${'●'.repeat(Math.ceil(drunk.level))}${'○'.repeat(8 - Math.ceil(drunk.level))}` : '';
   $('hud').textContent = `${kmh} km/h · ${Math.round(player.pos.y + (city.terrain?.base || 0))} m${booze}${params.has('fps') ? ` · ${Math.round(fps)} fps` : ''}`;
 }
 
@@ -667,6 +675,7 @@ const game = {
 };
 window.__game = game;
 hud.game = game;
+voice.attach(game); // voice:
 const systems = (game.systems = new Systems(game));
 await systems.load();
 

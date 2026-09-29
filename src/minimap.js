@@ -29,6 +29,21 @@ export class Minimap {
     g.closePath();
   }
 
+  // Five point star with a white edge, for the supreme bars.
+  star(g, x, z, r) {
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = (i * Math.PI) / 5 - Math.PI / 2, d = i % 2 ? r * 0.45 : r;
+      g.lineTo(x + Math.cos(a) * d, z + Math.sin(a) * d);
+    }
+    g.closePath();
+    g.fillStyle = '#ff3cc8';
+    g.strokeStyle = '#fff';
+    g.lineWidth = r * 0.2;
+    g.fill();
+    g.stroke();
+  }
+
   drawMarkers(g, W, H, s, pos, yaw) {
     if (!this.markers.size) return;
     const k = W / (this.c.clientWidth || 190); // canvas pixels per CSS pixel, so sizes and labels hold on a phone
@@ -136,6 +151,10 @@ export class Minimap {
     // Places to drink: amber for bars, pale gold for kiosks.
     for (const b of buckets) {
       for (const p of b.p || []) {
+        if (p.kind === 2) {
+          this.star(g, p.x, p.z, 11 / s); // bars: the supreme places are a pink star
+          continue;
+        }
         g.fillStyle = p.kind === 0 ? '#ffb000' : '#f3e39a';
         g.beginPath();
         g.arc(p.x, p.z, (p.kind === 0 ? 5 : 3.5) / s, 0, Math.PI * 2);

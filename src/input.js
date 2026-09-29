@@ -72,7 +72,7 @@ export class Input {
       tiePressed: this.pressed.has('KeyC'),
       interactPressed: this.pressed.has('KeyG'),
       pausePressed: this.pressed.has('KeyP'),
-      spot: [...this.pressed].map((c) => (/^Digit\d$/.test(c) ? (+c[5] + 9) % 10 : -1)).find((v) => v >= 0),
+      spot: [...this.pressed].map((c) => (/^Digit\d$/.test(c) ? ((+c[5] + 9) % 10) + (k.has('AltLeft') || k.has('AltRight') ? 10 : 0) : -1)).find((v) => v >= 0), // bars: Alt plus a digit is the second row of places
     };
   }
 

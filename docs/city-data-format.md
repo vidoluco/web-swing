@@ -32,9 +32,13 @@ A city is a folder `public/city/<cityId>/` written by `tools/osm-build.mjs` (and
 | `g` | Green and paved areas `[kind, outer, holes]`. Kinds: `wood`, `grass`, `pitch`, `sand`, `cemetery`, `plaza`. Polygons larger than a chunk are cut into per chunk tiles |
 | `t` | Trees, `[x, z, ...]`, x, z only |
 | `rl` | Railways `{ tram, pts }` |
-| `p` | Places to drink `[x, z, kind, name]`, kind 0 bar or pub, 1 kiosk or non-stop |
+| `p` | Places to drink `[x, z, kind, name]`, kind 0 bar or pub, 1 kiosk or non-stop, 2 supreme bar (100% drunk on entering, from `tools/extra-pois.json`) |
 
 Building heights in the tags are above the local ground. With a `dem`, `osm-build` bakes the terrain in: `y0` is the lowest ground under the footprint (plus `min_height` for a raised part), `y1` is the highest ground under the footprint plus the building height. The ground is sampled on the vertices, along every edge each metre, at the centroid and on every terrain grid node inside the footprint. `tools/check-city.mjs` verifies it independently: on Brasov 37,598 of 37,605 buildings have `y0` within 0.05 m of the lowest ground and the other 7 are `min_height` parts held up by their building. Without a `dem` the values are the OSM heights, as before.
+
+## Extra places: tools/extra-pois.json
+
+Places that the OSM extract does not tag as bars are added by the builder from `tools/extra-pois.json`, keyed by city: `{ "bucharest": { "places": [...], "rejected": [...] } }`. A place has `name`, `kind` (2 for a supreme bar), `lat`, `lon`, `street`, `address`, `position` (where the coordinate comes from) and `sources` (`[{ url, says }]`). The build stops with an error unless the sources are on at least two different sites, the street is a named `highway` in the input and a street piece runs within 60 m. An OSM place of the same name within 30 m is replaced (Ironic Taproom is an ordinary bar in OSM). `rejected` lists candidates left out and why. `EXTRA_POIS=path` reads another file, for tests. Only the `p` list of the chunk that holds the place changes: on Bucharest three chunk files differ from the build without extras, every other file is byte identical. Bucharest has three: Anagram, Hop Hooligans, Ironic Taproom.
 
 ## lod.bin
 
