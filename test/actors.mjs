@@ -15,7 +15,7 @@ const check = (name, ok, detail) => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}  ${JSON.stringify(detail)}`);
 };
 try {
-  const page = await open(browser, 'shot=street', errors);
+  const page = await open(browser, 'shot=street&living=0', errors); // the living city (people, trams, dogs) would share the actor slots
 
   // Helpers that live in the page.
   await page.evaluate(() => {

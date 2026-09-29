@@ -12,4 +12,9 @@ export default [
   () => import('./challenges.js'),
   () => import('./pets.js'),
   () => import('./hudpanels.js'),
+  () => import('./pedestrians.js'), // living:
+  () => import('./trams.js'), // living:
+  () => import('./strays.js'), // living:
+  () => import('./pigeons.js'), // living:
+  () => import('./ambience.js'), // living:
 ];
