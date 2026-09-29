@@ -10,3 +10,4 @@ shots/
 .claude/
 # edge-tts audio: not redistributable until its licence is checked (repo is public)
 public/audio/voice/
+.venv/
