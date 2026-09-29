@@ -561,6 +561,24 @@ class Paths {
     return e;
   }
 
+  // Is (x, z) on the carriageway of some street?
+  onRoad(x, z) {
+    for (let cx = Math.floor(x / 200) - 2; cx <= Math.floor(x / 200) + 2; cx++) {
+      for (let cz = Math.floor(z / 200) - 2; cz <= Math.floor(z / 200) + 2; cz++) {
+        const s = this.entry(cx * 1000 + cz).segs;
+        for (let i = 0; i < s.length; i += 8) {
+          if (s[i + 4]) continue;
+          const h = s[i + 6] / 2 - 0.3;
+          if ((x < s[i] - h && x < s[i + 2] - h) || (x > s[i] + h && x > s[i + 2] + h) || (z < s[i + 1] - h && z < s[i + 3] - h) || (z > s[i + 1] + h && z > s[i + 3] + h)) continue;
+          const dx = s[i + 2] - s[i], dz = s[i + 3] - s[i + 1];
+          const t = clamp(((x - s[i]) * dx + (z - s[i + 1]) * dz) / (dx * dx + dz * dz), 0, 1);
+          if (Math.hypot(x - s[i] - dx * t, z - s[i + 1] - dz * t) < h) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // A random spot within r of (x, z) on a footway or beside a street that `ok` accepts, or null.
   sample(x, z, r, rng, ok, out) {
     const cand = this.cand;
@@ -708,6 +726,7 @@ export class Actors {
     this.varGeo = new Map();
     this.quad = {};
     this.stat = { spawned: 0, culled: 0, rigs: 0 };
+    this.crowd = new Map(); // 2.5 m cells of the actors that can be walked into, rebuilt every update
     this._spot = { x: 0, z: 0 };
     this.planBudget = 1;
     this.lineBudget = 6;
@@ -827,7 +846,7 @@ export class Actors {
 
   // A spot within r of pos on a footway, a pedestrian street or the pavement beside a street.
   randomWalkPoint(pos, r = 40) {
-    const spot = this.paths.sample(pos.x, pos.z, r, this.rng, (px, pz) => !this.blocked(px, pz, 0.4), {});
+    const spot = this.paths.sample(pos.x, pos.z, r, this.rng, (px, pz) => !this.blocked(px, pz, 0.4) && !this.paths.onRoad(px, pz), {});
     if (spot) return spot;
     for (let i = 0; i < 12; i++) {
       const a = this.rng() * TAU, d = Math.sqrt(this.rng()) * r;
@@ -859,6 +878,14 @@ export class Actors {
     const px = player.pos.x, pz = player.pos.z;
     if (!this.center) this.center = new THREE.Vector3();
     this.center.set(px, 0, pz);
+    this.crowd.clear();
+    for (const a of this.list) {
+      if (a.state === 'down' || (a.pos.x - px) ** 2 + (a.pos.z - pz) ** 2 > SLOW * SLOW) continue;
+      const k = Math.floor(a.pos.x / 2.5) * 100003 + Math.floor(a.pos.z / 2.5);
+      const l = this.crowd.get(k);
+      if (l) l.push(a);
+      else this.crowd.set(k, [a]);
+    }
     for (let i = this.list.length - 1; i >= 0; i--) {
       const a = this.list[i];
       const dx = a.pos.x - px, dz = a.pos.z - pz, d2 = dx * dx + dz * dz;
@@ -1337,7 +1364,9 @@ export class Actors {
     dil.fill(0);
     // A cell is closed when its centre is inside a footprint or in water, or nearer a wall than the
     // body plus a hand's breadth.
-    const m = a.radius + 0.45, m2 = m * m;
+    // The retries also squeeze through narrower gaps than the first try would.
+    const tight = a.plans > 1;
+    const m = a.radius + (tight ? 0.15 : 0.45), m2 = m * m;
     const walls = [];
     for (const b of this.city.nearby(cx, cz, N * 0.75, _near)) {
       if (b.kind === 'prop' || b.y0 > 2.5 || b.y1 < 0.9 || b.maxx < x0 - m || b.minx > x0 + N + m || b.maxz < z0 - m || b.minz > z0 + N + m) continue;
@@ -1360,7 +1389,15 @@ export class Actors {
         }
       }
     }
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (this.city.isWater(x0 + i + 0.5, z0 + j + 0.5)) dil[j * N + i] = 1;
+    // Water closes its cell and, on the first try, the cells touching it.
+    const wet = [];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) if (this.city.isWater(x0 + i + 0.5, z0 + j + 0.5)) wet.push(j * N + i);
+    for (const n of wet) {
+      dil[n] = 1;
+      if (tight) continue;
+      const ni = n % N, nj = (n / N) | 0;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) dil[clamp(nj + dj, 0, N - 1) * N + clamp(ni + di, 0, N - 1)] = 1;
+    }
     const cell = (x, z) => clamp(Math.floor(z - z0), 0, N - 1) * N + clamp(Math.floor(x - x0), 0, N - 1);
     // The actor may already be close to a wall: open the cells round it so it can step out.
     const start = cell(a.pos.x, a.pos.z);
@@ -1464,9 +1501,9 @@ export class Actors {
       return true;
     };
     // The grid says a line is open; this checks it against the real outlines before trusting it.
-    const rr = a.radius + 0.3;
+    const rr = a.radius + (tight ? 0.12 : 0.3);
     const freeAt = (x, z) => {
-      if (this.city.isWater(x, z)) return false;
+      if (this.city.isWater(x, z) || this.city.isWater(x + rr, z) || this.city.isWater(x - rr, z) || this.city.isWater(x, z + rr) || this.city.isWater(x, z - rr)) return false;
       for (const b of walls) {
         if (x < b.minx - rr || x > b.maxx + rr || z < b.minz - rr || z > b.maxz + rr) continue;
         if (pointInPrism2D(x, z, b) || closestOnPrism(x, z, b, _cp).d < rr) return false;
@@ -1514,6 +1551,21 @@ export class Actors {
     const ox = a.pos.x, oz = a.pos.z;
     let x = ox + Math.sin(a.yaw) * a.speed * dt, z = oz + Math.cos(a.yaw) * a.speed * dt;
     const r = a.radius;
+    // Keep a body's width from the neighbours: each of a pair gives way half of the overlap.
+    const ci = Math.floor(x / 2.5), cj = Math.floor(z / 2.5);
+    for (let i = ci - 1; i <= ci + 1; i++) {
+      for (let j = cj - 1; j <= cj + 1; j++) {
+        const near = this.crowd.get(i * 100003 + j);
+        if (!near) continue;
+        for (const o of near) {
+          const dx = x - o.pos.x, dz = z - o.pos.z, d2 = dx * dx + dz * dz, m = (r + o.radius) * 0.8;
+          if (o === a || d2 >= m * m || d2 < 1e-8) continue;
+          const d = Math.sqrt(d2), push = (m - d) * 0.5;
+          x += (dx / d) * push;
+          z += (dz / d) * push;
+        }
+      }
+    }
     this._refreshObstacles(a);
     for (const b of a.obst) {
       if (x < b.minx - r || x > b.maxx + r || z < b.minz - r || z > b.maxz + r) continue;

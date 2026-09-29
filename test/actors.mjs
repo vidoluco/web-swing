@@ -86,6 +86,42 @@ try {
     r,
   );
 
+  // 1b. randomWalkPoint: pavements, footways and squares, never a carriageway, never a building.
+  r = await page.evaluate(() => {
+    const g = window.__game, A = g.actors;
+    const roads = [];
+    for (const c of g.city.mmCells.values()) for (const rd of c.r) if (rd.cls === 'road') roads.push(rd);
+    const onRoad = (x, z) => {
+      for (const rd of roads) {
+        const p = rd.pts;
+        for (let i = 0; i + 3 < p.length; i += 2) {
+          const dx = p[i + 2] - p[i], dz = p[i + 3] - p[i + 1], L2 = dx * dx + dz * dz || 1;
+          const t = Math.max(0, Math.min(1, ((x - p[i]) * dx + (z - p[i + 1]) * dz) / L2));
+          if (Math.hypot(x - p[i] - dx * t, z - p[i + 1] - dz * t) < rd.w / 2 - 0.3) return true;
+        }
+      }
+      return false;
+    };
+    let n = 0, on = 0, blocked = 0, far = 0;
+    const t0 = performance.now();
+    const pts = [];
+    for (const c of [{ x: 0, z: 0 }, { x: -300, z: 12 }, { x: 400, z: -200 }, { x: -700, z: -500 }]) {
+      for (let i = 0; i < 100; i++) {
+        const p = A.randomWalkPoint(c, 60);
+        pts.push(p);
+        if (Math.hypot(p.x - c.x, p.z - c.z) > 60.01) far++;
+      }
+    }
+    const ms = (performance.now() - t0) / pts.length;
+    for (const p of pts) {
+      n++;
+      if (onRoad(p.x, p.z)) on++;
+      if (A.blocked(p.x, p.z, 0.3)) blocked++;
+    }
+    return { n, onCarriageway: on, inBuildingOrWater: blocked, outsideRadius: far, msPerCall: +ms.toFixed(3) };
+  });
+  check('random walk points lie on pavements and footways, not on the road or in a building', r.n === 400 && r.onCarriageway === 0 && r.inBuildingOrWater === 0 && r.outsideRadius === 0, r);
+
   // 2. Walk 40 m along a street beside the buildings, every kind.
   const kinds = [['thug', 5.4], ['cop', 5.2], ['civilian', 1.35], ['dog', 6.8], ['bear', 1.5]];
   for (const [kind, speed] of kinds) {
@@ -356,15 +392,33 @@ try {
   console.log('COST per game tick (no render) and per rendered frame (tick + draw submit, GPU shared), ms:', JSON.stringify(r));
   check('120 actors: cost reported, the actors add under 3 ms to a game tick', r.actors === 120 && r.tickMsActors < 3, r);
 
-  // 8. Water: a lake between the actor and its goal is never entered.
-  r = await page.evaluate(() => {
+  // 8. Water: a pond between the actor and its goal. Crossings 25 to 100 m of water wide are tried
+  // until one has a way round inside the planner's window (checked with a flood fill on the real
+  // outlines); the actor has to find it and never put a foot in the water.
+  r = await page.evaluate(async () => {
     const g = window.__game, A = g.actors, T = window.__t;
     A.clear();
-    let best = null;
-    for (const w of g.city.waters) {
-      // Ponds and small lakes: the way round has to fit in the planner's window.
-      if (w.maxx - w.minx < 30 || w.maxx - w.minx > 160 || w.maxz - w.minz > 160) continue;
-      for (let z = w.minz + 20; z < w.maxz - 20; z += 10) {
+    // Cismigiu and its neighbours, loaded on purpose so the same water is there on every run.
+    await g.city.streamAround(-900, -1200, 500);
+    const reachable = (ax, az, bx, bz) => {
+      const cx = (ax + bx) / 2, cz = (az + bz) / 2, seen = new Set(['0,0']), q = [[0, 0]];
+      while (q.length) {
+        const [i, j] = q.shift();
+        if (Math.hypot(ax + i - bx, az + j - bz) < 1.5) return true;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          const ni = i + di, nj = j + dj, k = ni + ',' + nj;
+          if (seen.has(k) || Math.abs(ax + ni - cx) > 46 || Math.abs(az + nj - cz) > 46) continue;
+          seen.add(k);
+          if (!A.blocked(ax + ni, az + nj, 0.6)) q.push([ni, nj]);
+        }
+      }
+      return false;
+    };
+    let best = null, tried = 0;
+    const lakes = g.city.waters.filter((w) => Math.hypot((w.minx + w.maxx) / 2 + 900, (w.minz + w.maxz) / 2 + 1200) < 500);
+    for (const w of lakes.sort((p, q) => p.minx - q.minx || p.minz - q.minz)) {
+      if (best || w.maxx - w.minx < 25) continue;
+      for (let z = w.minz + 15; z < w.maxz - 15 && !best; z += 8) {
         let run = 0, start = 0, top = { len: 0 };
         for (let x = w.minx - 10; x < w.maxx + 10; x++) {
           if (g.city.isWater(x, z)) (run || (start = x)), run++;
@@ -373,23 +427,27 @@ try {
             run = 0;
           }
         }
-        if (top.len > 25 && top.len < 100 && !A.blocked(top.x0 - 5, z, 0.6) && !A.blocked(top.x1 + 5, z, 0.6) && (!best || top.len > best.len)) best = { ...top, z };
+        if (top.len < 25 || top.len > 100 || A.blocked(top.x0 - 5, z, 0.6) || A.blocked(top.x1 + 5, z, 0.6)) continue;
+        tried++;
+        if (reachable(top.x0 - 5, z, top.x1 + 5, z)) best = { ...top, z };
       }
     }
-    if (!best) return { skipped: 'no pond found', waters: g.city.waters.length };
+    if (!best) return { skipped: 'no pond with a way round', tried };
     T.stand(best.x0 - 5, best.z);
     g.simulate(0.5, 1 / 30);
     const a = A.spawn('civilian', { x: best.x0 - 5, z: best.z }, { exact: true, yaw: Math.PI / 2 });
     A.walkTo(a, best.x1 + 5, best.z, 1.6);
-    let water = 0, t = 0, start = Math.hypot(a.pos.x - (best.x1 + 5), a.pos.z - best.z);
+    let water = 0, t = 0, inside = 0;
+    const start = Math.hypot(a.pos.x - (best.x1 + 5), a.pos.z - best.z);
     while (t < 150 && a.hasGoal) {
       g.simulate(1 / 30, 1 / 30);
       t += 1 / 30;
       if (g.city.isWater(a.pos.x, a.pos.z)) water++;
+      if (T.inside(a) > 0) inside++;
     }
-    return { pond: Math.round(best.len), seconds: +t.toFixed(1), water, startDistance: Math.round(start), left: +Math.hypot(a.pos.x - (best.x1 + 5), a.pos.z - best.z).toFixed(1), state: a.state };
+    return { pond: Math.round(best.len), at: [Math.round(best.x0), Math.round(best.z)], tried, seconds: +t.toFixed(1), water, inside, startDistance: Math.round(start), left: +Math.hypot(a.pos.x - (best.x1 + 5), a.pos.z - best.z).toFixed(1), plans: a.plans, planWhy: a.planWhy, state: a.state };
   });
-  check('a pond between the actor and its goal is walked round, never entered', r.water === 0 && r.left < 1.5, r);
+  check('a pond between the actor and its goal is walked round, never entered', !r.skipped && r.water === 0 && r.inside === 0 && r.left < 1.5, r);
 
   const errs = errors.filter((e) => !/GPU stall|GL Driver/.test(e));
   check('no page errors', errs.length === 0, errs);
