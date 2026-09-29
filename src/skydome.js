@@ -95,7 +95,7 @@ const FRAG = /* glsl */ `
 varying vec3 vDir;
 uniform vec3 uZenith, uMid, uHorizon, uGlow, uSunCol, uBelow, uCloudLit;
 uniform vec3 uSun, uMoon;
-uniform float uGlowK, uNight, uStars, uCover, uTime, uStyle, uEnv, uSunVis, uDesat;
+uniform float uGlowK, uStars, uCover, uTime, uStyle, uEnv, uSunVis, uDesat;
 uniform sampler2D uHdri;
 uniform float uHdriMix, uHdriRot, uHdriScale, uHdriMax;
 
@@ -220,7 +220,7 @@ export function makeSkyMaterial(env) {
     uZenith: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() },
     uSunCol: { value: new THREE.Color() }, uBelow: { value: new THREE.Color() }, uCloudLit: { value: new THREE.Color() },
     uSun: { value: new THREE.Vector3(0, 1, 0) }, uMoon: { value: new THREE.Vector3(0, -1, 0) },
-    uGlowK: { value: 0 }, uNight: { value: 0 }, uCover: { value: 0.4 }, uTime: { value: 0 }, uStyle: { value: 0 },
+    uGlowK: { value: 0 }, uCover: { value: 0.4 }, uTime: { value: 0 }, uStyle: { value: 0 },
     uEnv: { value: env ? 1 : 0 }, uSunVis: { value: 1 }, uStars: { value: 0 }, uDesat: { value: env ? 0.4 : 0 },
     uHdri: { value: dummy }, uHdriMix: { value: 0 }, uHdriRot: { value: 0 }, uHdriScale: { value: 1 }, uHdriMax: { value: 4 },
   };
@@ -237,7 +237,7 @@ export function makeSkyMaterial(env) {
 }
 
 // Copies a palette and the celestial directions into a sky material.
-export function setSkyUniforms(mat, atm, sun, moon, night, styleIdx, time) {
+export function setSkyUniforms(mat, atm, sun, moon, styleIdx, time) {
   const u = mat.uniforms;
   u.uZenith.value.copy(atm.zen);
   u.uMid.value.copy(atm.mid);
@@ -249,7 +249,6 @@ export function setSkyUniforms(mat, atm, sun, moon, night, styleIdx, time) {
   u.uSun.value.set(sun.x, sun.y, sun.z);
   u.uMoon.value.set(moon.x, moon.y, moon.z);
   u.uGlowK.value = atm.glowK;
-  u.uNight.value = night;
   u.uStars.value = Math.min(1, Math.max(0, (-sun.elev - 5) / 9));
   u.uCover.value = atm.cover;
   u.uStyle.value = styleIdx;

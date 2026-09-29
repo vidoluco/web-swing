@@ -120,8 +120,7 @@ export class EnvMaps {
     for (const elev of KEY_ELEV) {
       const atm = atmFor(elev);
       const sun = EnvMaps.refSun(elev);
-      const night = elev < -4 ? 1 : 0;
-      setSkyUniforms(this.material, atm, sun, moonFor(elev), night, 0, 0);
+      setSkyUniforms(this.material, atm, sun, moonFor(elev), 0, 0);
       u.uBelow.value.copy(atm.hg).multiplyScalar(0.6 + 0.4 * Math.min(1, atm.sunK + 0.2));
       const entry = Object.values(this.hdris).find((h) => h.spec.keys.includes(elev));
       if (entry) {

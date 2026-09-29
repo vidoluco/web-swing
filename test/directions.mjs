@@ -98,9 +98,30 @@ const VIEWS = [
 
 // The night set, in the default style (A).
 const NIGHT = [
-  { id: 'night-unirii', title: 'Piața Unirii di notte', query: 'shot=perch&time=22', view: VIEWS[0] },
-  { id: 'night-street', title: 'Il viale sotto i lampioni', query: 'shot=street&time=22', view: VIEWS[3] },
-  { id: 'night-swing', title: 'Swing nella notte', query: 'shot=street&time=21', view: VIEWS[1] },
+  {
+    id: 'night-avenue',
+    title: 'Il Bd. Unirii dall’alto, di notte',
+    query: 'shot=street&time=22',
+    setup: async () => {
+      const g = window.__game;
+      g.advance(3);
+      g.aerial(-120, 70, 40, -520, -10);
+      g.advance(2);
+    },
+  },
+  {
+    id: 'night-street',
+    title: 'A piedi sotto i lampioni',
+    query: 'shot=street&time=22',
+    setup: () => {
+      const g = window.__game;
+      g.advance(2);
+      g.look(Math.PI / 2 + 0.15, 0.08);
+      g.rig.dist = 6;
+      g.advance(2);
+    },
+  },
+  { id: 'night-swing', title: 'Swing nella notte', query: 'shot=street&time=21', setup: VIEWS[1].setup },
 ];
 
 const only = process.argv.slice(2);
@@ -136,7 +157,7 @@ try {
     const page = await open(browser, n.query, errors, W, H);
     await clean(page);
     await page.evaluate(() => window.__game.env.ready);
-    await page.evaluate(`(${n.view.setup.toString()})()`);
+    await page.evaluate(`(${n.setup.toString()})()`);
     await page.evaluate(() => window.__game.env.setStyle('a'));
     await shoot(page, n.id);
     await page.close();

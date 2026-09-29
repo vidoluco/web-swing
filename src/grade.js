@@ -18,6 +18,8 @@ uniform float uRimK;
 uniform vec4 uLamp[16];
 uniform float uLampN;
 uniform vec3 uLampCol;
+uniform float uGlare;
+uniform vec3 uGlareCol;
 
 const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
 
@@ -110,6 +112,14 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
   }
   vec3 c = look(inputColor.rgb);
 
+  if (uGlare > 0.0) {
+    // Sun in the eyes: a veil of glare around the sun, over sky and buildings alike.
+    vec4 gp = uInvProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+    vec3 gd = normalize((uCamWorld * vec4(gp.xyz / gp.w, 0.0)).xyz);
+    float gc = max(dot(gd, uSunDirW), 0.0);
+    c += uGlareCol * uGlare * (0.5 * pow(gc, 24.0) + 0.5 * pow(gc, 400.0));
+  }
+
   if (uRimK > 0.0 && z0 < 9.0e4) {
     // Rim light: the edge of a shape that faces the light, where the ground behind it is much farther away.
     vec2 rd2 = uRimDir * texelSize;
@@ -167,7 +177,7 @@ export class GradeEffect extends Effect {
   constructor(camera) {
     const V = THREE.Vector3, M = THREE.Matrix4;
     super('GradeEffect', FRAG, {
-      attributes: EffectAttribute.DEPTH | EffectAttribute.CONVOLUTION,
+      attributes: EffectAttribute.DEPTH,
       uniforms: new Map([
         ['uStyle', new THREE.Uniform(0)], ['uAces', new THREE.Uniform(0.5)], ['uExposure', new THREE.Uniform(1)], ['uSat', new THREE.Uniform(1)],
         ['uContrast', new THREE.Uniform(1)], ['uVig', new THREE.Uniform(0.3)], ['uDither', new THREE.Uniform(0.01)],
@@ -178,7 +188,7 @@ export class GradeEffect extends Effect {
         ['uSunDirW', new THREE.Uniform(new V(0, 1, 0))], ['uCamPos', new THREE.Uniform(new V())],
         ['uInvProj', new THREE.Uniform(new M())], ['uCamWorld', new THREE.Uniform(new M())],
         ['uBands', new THREE.Uniform(4)], ['uInkW', new THREE.Uniform(1.3)], ['uInkDepth', new THREE.Uniform(0.035)],
-        ['uInkColorK', new THREE.Uniform(0.3)], ['uRimK', new THREE.Uniform(0)], ['uLamp', new THREE.Uniform(Array.from({ length: 16 }, () => new THREE.Vector4()))], ['uLampN', new THREE.Uniform(0)], ['uLampCol', new THREE.Uniform(new V(1.0, 0.6, 0.28))], ['uRimDir', new THREE.Uniform(new THREE.Vector2(0.6, 0.8))], ['uRimCol', new THREE.Uniform(new V(1, 0.8, 0.6))], ['uInkStrength', new THREE.Uniform(0.92)], ['uInk', new THREE.Uniform(new V(0.06, 0.05, 0.1))],
+        ['uInkColorK', new THREE.Uniform(0.3)], ['uRimK', new THREE.Uniform(0)], ['uGlare', new THREE.Uniform(0)], ['uGlareCol', new THREE.Uniform(new V(1, 0.8, 0.55))], ['uLamp', new THREE.Uniform(Array.from({ length: 16 }, () => new THREE.Vector4()))], ['uLampN', new THREE.Uniform(0)], ['uLampCol', new THREE.Uniform(new V(1.0, 0.6, 0.28))], ['uRimDir', new THREE.Uniform(new THREE.Vector2(0.6, 0.8))], ['uRimCol', new THREE.Uniform(new V(1, 0.8, 0.6))], ['uInkStrength', new THREE.Uniform(0.92)], ['uInk', new THREE.Uniform(new V(0.06, 0.05, 0.1))],
       ]),
     });
     this.camera = camera;

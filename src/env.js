@@ -65,6 +65,7 @@ export function create(game) {
   const profile = profileFor(game.cityId);
   const dayMinutes = +params.get('daymin') || 24;
   const hoursPerSecond = 24 / (dayMinutes * 60);
+  const LOWQ = params.has('lowq');
 
   // ---- the clock ----
   const fixedByUrl = params.has('time');
@@ -88,17 +89,16 @@ export function create(game) {
   const sky = new SkyDome();
   const envMaps = new EnvMaps(renderer);
   const grade = new GradeEffect(camera);
-  let bloom = null, bloomPass = null, gradePass = null, n8 = null;
+  let bloom = null, bloomOn = false, n8 = null;
   let waterU = null;
   let ui = null;
   let lamps = null;
   let lampT = 0;
   let offKey = null;
   const hemi = scene.children.find((o) => o.isHemisphereLight);
-  const baseHemi = hemi ? { intensity: hemi.intensity } : null;
   const _c = new THREE.Color();
   const _dir = new THREE.Vector3();
-  let sunDirChanged = true;
+  const _white = new THREE.Color(1, 1, 1);
 
   // Palette for a sun elevation in this city, in the neutral style: the environment maps are shared by the three looks.
   const atmFor = (elev) => atmosphere(elev, profile, 'a', makeAtmosphere());
@@ -116,10 +116,10 @@ export function create(game) {
     g.set('uDither', st.dither);
     g.set('uBands', st.bands);
     g.set('uRimK', st.rim * 0.55);
-    if (bloomPass) {
-      bloomPass.enabled = !!st.bloom;
+    bloomOn = !!st.bloom && !LOWQ;
+    if (bloom) {
+      bloom.intensity = bloomOn ? st.bloom.intensity : 0;
       if (st.bloom) {
-        bloom.intensity = st.bloom.intensity;
         bloom.luminanceMaterial.threshold = st.bloom.threshold;
         bloom.mipmapBlurPass.radius = st.bloom.radius;
       }
@@ -146,7 +146,7 @@ export function create(game) {
     night = nightAmount(sunV.elev);
     uniforms.uNight.value = night;
 
-    setSkyUniforms(sky.material, atm, sunV, moonV, night, st.idx, game.time);
+    setSkyUniforms(sky.material, atm, sunV, moonV, st.idx, game.time);
 
     // One shadow-casting light: the sun by day, the moon by night, each faded to nothing before they hand over.
     const csm = gfx.csm;
@@ -212,7 +212,9 @@ export function create(game) {
     grade.set('uHazeSunCol', [_c.r, _c.g, _c.b]);
     grade.set('uHazeSunK', st.hazeSun * Math.min(1, atm.glowK + 0.2));
     grade.set('uSunDirW', [sunV.x, sunV.y, sunV.z]);
-    _c.copy(atm.glow).lerp(_dirWhite, 0.35);
+    grade.set('uGlare', st.glare * smooth(-3, 3, sunV.elev) * (1 - 0.6 * smooth(20, 50, sunV.elev)));
+    grade.set('uGlareCol', [atm.glow.r, atm.glow.g, atm.glow.b]);
+    _c.copy(atm.glow).lerp(_white, 0.35);
     grade.set('uRimCol', [_c.r * 0.55, _c.g * 0.5, _c.b * 0.45]);
 
     // The day and night voice lines, only when the clock runs into them by itself.
@@ -224,7 +226,6 @@ export function create(game) {
     lastApplied = hours;
     dirty = false;
   }
-  const _dirWhite = new THREE.Color(1, 1, 1);
 
   function setStyle(id) {
     if (!STYLES[id] || id === styleId) return;
@@ -337,19 +338,19 @@ export function create(game) {
         old.dispose();
       }
       const index = at >= 0 ? at : comp.passes.length - 2;
-      bloom = new BloomEffect({ intensity: 0.4, luminanceThreshold: 2.4, luminanceSmoothing: 0.4, mipmapBlur: true, radius: 0.72 });
-      bloomPass = new EffectPass(camera, bloom);
-      gradePass = new EffectPass(camera, grade);
-      comp.addPass(bloomPass, index);
-      comp.addPass(gradePass, index + 1);
+      bloom = new BloomEffect({ intensity: 0.4, luminanceThreshold: 2.4, luminanceSmoothing: 0.4, mipmapBlur: true, radius: 0.72, levels: 6 });
+      // One pass for both: the bloom is added first, then the grade sees it. A style without bloom skips its blur.
+      const blurUpdate = bloom.update.bind(bloom);
+      bloom.update = (...a) => bloomOn && blurUpdate(...a);
+      comp.addPass(new EffectPass(camera, bloom, grade), index);
 
       // Environment maps: procedural now, with the real skies mixed in as soon as they have loaded.
       sunAt(hours, profile.lat, sunV);
       moonAt(hours, profile.lat, moonV);
-      envMaps.bake(atmFor, moonFor);
+      envMaps.bake(atmFor, moonFor, LOWQ ? 128 : 256);
       scene.environment = envMaps.texture;
       game.env.ready = envMaps.loadHdris().then(() => {
-        envMaps.bake(atmFor, moonFor);
+        envMaps.bake(atmFor, moonFor, LOWQ ? 128 : 256);
         dirty = true;
       });
 

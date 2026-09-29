@@ -238,35 +238,68 @@ try {
     const after = await mem();
     check('10 style switches leak nothing (geometries, textures, programs and passes unchanged)', before.geometries === after.geometries && before.textures === after.textures && before.programs === after.programs && before.passes === after.passes, { before, after });
 
-    // Cost: the env system per tick (CPU), and the whole frame per style (GPU shared with other work, so loose).
+    // Cost. CPU: the env system per tick. GPU: timer queries around whole frames, in turn for the picture without
+    // the grade pass, then A, B and C, interleaved so that the other work on a shared GPU hits all of them alike.
     const cost = await page.evaluate(async () => {
       const g = window.__game;
       const env = g.systems.get('env');
-      const out = {};
       const gl = g.renderer.getContext();
+      const timer = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+      const out = { cpu: {}, gpu: null };
       for (const id of ['a', 'b', 'c']) {
         g.env.setStyle(id);
         g.env.setTime(19.5);
         for (let i = 0; i < 30; i++) env.update(1 / 60);
         const t0 = performance.now();
         for (let i = 0; i < 2000; i++) env.update(1 / 60);
-        const cpu = (performance.now() - t0) / 2000;
-        const frames = [];
-        g.advance(0.1);
-        for (let i = 0; i < 24; i++) {
-          const t = performance.now();
-          g.advance(1 / 60, 1 / 60);
-          gl.finish();
-          frames.push(performance.now() - t);
-        }
-        frames.sort((x, y) => x - y);
-        out[id] = { cpuMsPerTick: Math.round(cpu * 1000) / 1000, frameMs: Math.round(frames[frames.length >> 1] * 10) / 10 };
+        out.cpu[id] = Math.round(((performance.now() - t0) / 2000) * 1000) / 1000;
       }
+      if (!timer) return out;
+      const pass = g.gfx.composer.passes.find((p) => p.effects?.some((e) => e.name === 'GradeEffect'));
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      // 12 frames inside one timer query, so that a hiccup from other GPU work is spread thin.
+      const batch = async () => {
+        const q = gl.createQuery();
+        gl.beginQuery(timer.TIME_ELAPSED_EXT, q);
+        for (let i = 0; i < 12; i++) g.advance(0);
+        gl.endQuery(timer.TIME_ELAPSED_EXT);
+        for (let i = 0; i < 400 && !gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE); i++) await sleep(2);
+        const bad = gl.getParameter(timer.GPU_DISJOINT_EXT);
+        const ms = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6 / 12;
+        gl.deleteQuery(q);
+        return bad ? NaN : ms;
+      };
+      const modes = { off: () => (pass.enabled = false), a: () => ((pass.enabled = true), g.env.setStyle('a')), b: () => ((pass.enabled = true), g.env.setStyle('b')), c: () => ((pass.enabled = true), g.env.setStyle('c')) };
+      // Rounds of off, A, B, C, off: a style is measured against the mean of the two "off" batches around it.
+      const med = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
+      const diffs = { a: [], b: [], c: [] };
+      const offs = [];
+      g.env.setTime(17.5);
+      for (const k of Object.keys(modes)) (modes[k](), await batch());
+      for (let round = 0; round < 8; round++) {
+        const r = {};
+        for (const k of ['off', 'a', 'b', 'c', 'off2']) {
+          modes[k === 'off2' ? 'off' : k]();
+          await batch();
+          r[k] = await batch();
+        }
+        const base = (r.off + r.off2) / 2;
+        offs.push(base);
+        for (const id of ['a', 'b', 'c']) if (!Number.isNaN(r[id] - base)) diffs[id].push(r[id] - base);
+      }
+      out.spread = Math.round(((Math.max(...offs) - Math.min(...offs)) / med(offs)) * 100) / 100;
+      out.gpu = { off: Math.round(med(offs) * 100) / 100 };
+      for (const id of ['a', 'b', 'c']) out.gpu[id] = Math.round(med(diffs[id]) * 100) / 100;
+      pass.enabled = true;
       return out;
     });
-    console.log('COST  ms per tick of the env system, and median ms per rendered frame (1280x720, shared GPU):', JSON.stringify(cost));
-    check('the env system costs under 0.5 ms per tick in every style', ['a', 'b', 'c'].every((id) => cost[id].cpuMsPerTick < 0.5), cost);
-    check('a frame in B and C costs at most 1.6x plus 8 ms of A (loose: the GPU is shared)', cost.b.frameMs <= cost.a.frameMs * 1.6 + 8 && cost.c.frameMs <= cost.a.frameMs * 1.6 + 8, cost);
+    const extra = cost.gpu;
+    console.log('COST  ms per tick of the env system:', JSON.stringify(cost.cpu), ' GPU ms per frame without the grade pass, and the extra ms of each style over it (median of 8 rounds, 1280x720, GPU shared with other work):', JSON.stringify(cost.gpu));
+    check('the env system costs under 0.5 ms per tick in every style', ['a', 'b', 'c'].every((id) => cost.cpu[id] < 0.5), cost.cpu);
+    // With other work on the GPU the frame time swings by more than the cost we measure: then the number is only printed.
+    const steady = cost.gpu && cost.spread < 0.15;
+    if (cost.gpu && !steady) console.log(`NOTE  the GPU is too busy for a reliable measure (the "off" batches differ by ${Math.round(cost.spread * 100)}%): the ceiling is not checked`);
+    check('the whole look (haze, tone map, bloom, toon, outlines) costs under 3 ms of GPU per frame in every style', !steady || ['a', 'b', 'c'].every((id) => extra[id] < 3), { ...extra, steady });
     await page.close();
   }
 
