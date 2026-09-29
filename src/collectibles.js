@@ -141,12 +141,16 @@ export class Pickups {
     }
     const r = this.spec.radius ?? 2.2;
     for (const it of this.items) {
-      if (!it.obj || !it.obj.visible || this.taken.has(it.id)) continue;
-      const m = it.obj.children[0];
-      m.rotation.y = this.time * 1.6 + it.x;
-      m.position.y = 0.9 + Math.sin(this.time * 2.2 + it.z) * 0.12;
+      if (this.taken.has(it.id)) continue;
+      const m = it.obj?.visible ? it.obj.children[0] : null;
+      if (m) {
+        m.rotation.y = this.time * 1.6 + it.x;
+        m.position.y = 0.9 + Math.sin(this.time * 2.2 + it.z) * 0.12;
+      }
       if (driving) continue;
-      const dx = it.x - player.pos.x, dz = it.z - player.pos.z, dy = it.y + 1 - (player.pos.y + 0.9);
+      const dx = it.x - player.pos.x, dz = it.z - player.pos.z;
+      if (Math.abs(dx) > r || Math.abs(dz) > r) continue;
+      const dy = it.y + 1 - (player.pos.y + 0.9);
       if (dx * dx + dz * dz < r * r && Math.abs(dy) < 2.4) this.take(it);
     }
   }
