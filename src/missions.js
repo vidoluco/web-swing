@@ -85,6 +85,8 @@ export function create(game) {
   let sayT = 0;
   let carry = null; // sprite over her head while she carries something
   let hintOn = false;
+  let lastHint = '';
+  const offs = []; // event unsubscribers, for dispose
   const speakers = [];
   const dom = {};
 
@@ -107,6 +109,8 @@ export function create(game) {
   }
 
   function hint(text) {
+    if (text === lastHint) return;
+    lastHint = text;
     dom.hint.textContent = text || '';
     dom.hint.classList.toggle('show', !!text);
   }
@@ -360,7 +364,7 @@ export function create(game) {
           if (d > SPEAKER_REACH) continue;
           close = true;
           if (!press) continue;
-          scene.remove(m);
+          dropMesh(m);
           speakers.splice(speakers.indexOf(m), 1);
           beams.remove('t' + sp.i);
           S.left.splice(S.left.indexOf(sp), 1);
@@ -409,6 +413,11 @@ export function create(game) {
   };
 
   STEPS.race = STEPS.deliver; // a race is gates in order like a delivery, just told differently
+
+  function dropMesh(m) {
+    scene.remove(m);
+    m.traverse((o) => o.isMesh && (o.geometry.dispose(), o.material.dispose()));
+  }
 
   function setCarry(label) {
     if (carry) {
@@ -463,7 +472,7 @@ export function create(game) {
     run = null;
     beams.clear();
     game.minimap.setMarkers('missions', []);
-    for (const sp of speakers.splice(0)) scene.remove(sp);
+    for (const sp of speakers.splice(0)) dropMesh(sp);
     setCarry(null);
     hint('');
     hintOn = false;
@@ -566,9 +575,11 @@ export function create(game) {
       overlay?.insertBefore(dom.list, document.getElementById('overlay-buttons'));
       renderList();
       document.addEventListener('pointerlockchange', renderList);
-      events.on('bunica:down', () => run && fail('sei svenuta'));
-      events.on('busted', () => run && fail('ti hanno presa'));
-      events.on('wanted', (e) => run?.def.noStars && e?.stars > 0 && fail('è arrivata la polizia'));
+      offs.push(
+        events.on('bunica:down', () => run && fail('sei svenuta')),
+        events.on('busted', () => run && fail('ti hanno presa')),
+        events.on('wanted', (e) => run?.def.noStars && e?.stars > 0 && fail('è arrivata la polizia')),
+      );
       refreshStart();
     },
 
@@ -626,6 +637,7 @@ export function create(game) {
       dom.hint?.remove();
       dom.list?.remove();
       document.removeEventListener('pointerlockchange', renderList);
+      for (const off of offs.splice(0)) off();
     },
   };
 }

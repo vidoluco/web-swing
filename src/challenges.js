@@ -11,23 +11,22 @@ const START_R = 6;
 const GATE_R = 9;
 const JAR_RESPECT = 3;
 const TIMEOUT = 1.6; // of the bronze time
-export const JARS_PER_CITY = 50;
 
 let jarModels = null;
 function jarModel() {
   if (!jarModels) {
-    const glass = new THREE.MeshStandardMaterial({ color: 0xdfeff5, roughness: 0.05, transparent: true, opacity: 0.35, depthWrite: false });
-    const stew = new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.5, emissive: 0x8a2a00, emissiveIntensity: 0.9 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0xdfeff5, roughness: 0.05, transparent: true, opacity: 0.2, depthWrite: false });
+    const stew = new THREE.MeshStandardMaterial({ color: 0xd04a10, roughness: 0.5, emissive: 0xa03000, emissiveIntensity: 1.1 });
     const lid = new THREE.MeshStandardMaterial({ color: 0xd8a72a, roughness: 0.35, metalness: 0.6, emissive: 0x403000, emissiveIntensity: 0.4 });
     const body = new THREE.LatheGeometry([[0, 0], [0.09, 0], [0.1, 0.02], [0.1, 0.17], [0.085, 0.2], [0.08, 0.22], [0, 0.22]].map(([r, y]) => new THREE.Vector2(r, y)), 20);
-    const fill = new THREE.LatheGeometry([[0, 0.01], [0.088, 0.01], [0.092, 0.03], [0.092, 0.16], [0, 0.16]].map(([r, y]) => new THREE.Vector2(r, y)), 20);
+    const fill = new THREE.LatheGeometry([[0, 0.01], [0.092, 0.01], [0.096, 0.03], [0.096, 0.19], [0, 0.19]].map(([r, y]) => new THREE.Vector2(r, y)), 20);
     const label = new THREE.MeshStandardMaterial({ map: bandTexture(['ZACUSCĂ', 'DE VINETE'], '#f6ecd0', '#8a1c10', '#c2410c'), roughness: 0.7 });
     const g = new THREE.Group();
     g.add(new THREE.Mesh(body, glass), new THREE.Mesh(fill, stew));
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.086, 0.086, 0.035, 20), lid);
     cap.position.y = 0.235;
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.102, 0.102, 0.09, 24, 1, true), label);
-    band.position.y = 0.095;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.102, 0.102, 0.07, 24, 1, true), label);
+    band.position.y = 0.1;
     g.add(cap, band);
     g.scale.setScalar(3.4);
     g.position.y = -0.35;
@@ -49,6 +48,7 @@ export function create(game) {
   let markT = 0;
   let jars = null;
   let objText = null;
+  let off = null;
 
   const jarSet = new Set(save.get('borcane', {})[key] ?? []);
   const jarsAll = () => Object.values(save.get('borcane', {})).reduce((n, a) => n + a.length, 0);
@@ -179,7 +179,7 @@ export function create(game) {
       showStarts();
       loadCollect(key).then(initJars);
       // A mission that ends on a race's start must not throw her into the race: wait until she has left.
-      events.on('mission:end', () => (armed = false));
+      off = events.on('mission:end', () => (armed = false));
     },
 
     update(dt) {
@@ -220,6 +220,7 @@ export function create(game) {
     },
 
     dispose() {
+      off?.();
       if (active) endRace();
       beams.clear();
       jars?.dispose();
@@ -230,4 +231,4 @@ export function create(game) {
 }
 
 const MEDAL_NAME = { gold: 'oro', silver: 'argento', bronze: 'bronzo' };
-export const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;

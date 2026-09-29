@@ -123,6 +123,7 @@ export function create(game) {
           build: (it) => (models.get(it.type) ?? (models.set(it.type, bottleModel(it.type)), models.get(it.type))).clone(),
           glow: (it) => KINDS[it.type].glow,
           height: 20,
+          near: 700,
           radius: 2.4,
           take,
         });

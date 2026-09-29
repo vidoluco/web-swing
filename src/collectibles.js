@@ -124,7 +124,7 @@ export class Pickups {
   update(dt) {
     const { player } = this.game;
     this.time += dt;
-    const near = this.spec.near ?? 350;
+    const near = this.spec.near ?? 500;
     const driving = this.game.driving?.();
     if ((this.scanT -= dt) <= 0) {
       this.scanT = 0.4;
