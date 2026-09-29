@@ -76,7 +76,7 @@ float gFoam = 0.0; vec2 gSlope = vec2(0.0);`
 }`
       )
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * uWGlow * (1.0 - uWNight);')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(0.05, 0.3, clamp(gFoam * 2.0, 0.0, 1.0));')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = uWaterStyle > 1.5 ? 0.5 : mix(0.05, 0.3, clamp(gFoam * 2.0, 0.0, 1.0));')
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>

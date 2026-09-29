@@ -119,13 +119,18 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
   }
 
   if (uStyle > 1.5) {
-    // Flat light bands that keep the hue. The band is picked from the neighbourhood, so texture grain does
-    // not flicker between bands; a share of the local colour is kept for the detail.
-    vec2 sp = texelSize * 2.2;
-    vec3 avg = (texture2D(inputBuffer, uv + vec2(sp.x, 0.0)).rgb + texture2D(inputBuffer, uv - vec2(sp.x, 0.0)).rgb
-              + texture2D(inputBuffer, uv + vec2(0.0, sp.y)).rgb + texture2D(inputBuffer, uv - vec2(0.0, sp.y)).rgb) * 0.25;
-    vec3 soft = look(avg);
-    c = mix(c, soft, 0.55);
+    // Flat light bands that keep the hue. The colour is first smoothed with a wide blur that stops at depth
+    // edges, so texture grain melts into flat areas and does not flicker between bands.
+    const vec2 OFF[8] = vec2[8](vec2(3.0, 0.0), vec2(-3.0, 0.0), vec2(0.0, 3.0), vec2(0.0, -3.0), vec2(6.0, 6.0), vec2(-6.0, 6.0), vec2(6.0, -6.0), vec2(-6.0, -6.0));
+    vec3 acc = inputColor.rgb;
+    float wsum = 1.0;
+    for (int i = 0; i < 8; i++) {
+      vec2 q = uv + OFF[i] * texelSize;
+      float w = exp(-abs(linZ(q) - z0) / (0.05 * z0 + 0.3));
+      acc += texture2D(inputBuffer, q).rgb * w;
+      wsum += w;
+    }
+    c = mix(c, look(acc / wsum), 0.85);
     float L = dot(c, LW);
     float x = L * uBands;
     float fr = fract(x);
@@ -173,7 +178,7 @@ export class GradeEffect extends Effect {
         ['uSunDirW', new THREE.Uniform(new V(0, 1, 0))], ['uCamPos', new THREE.Uniform(new V())],
         ['uInvProj', new THREE.Uniform(new M())], ['uCamWorld', new THREE.Uniform(new M())],
         ['uBands', new THREE.Uniform(4)], ['uInkW', new THREE.Uniform(1.3)], ['uInkDepth', new THREE.Uniform(0.035)],
-        ['uInkColorK', new THREE.Uniform(0.5)], ['uRimK', new THREE.Uniform(0)], ['uLamp', new THREE.Uniform(Array.from({ length: 16 }, () => new THREE.Vector4()))], ['uLampN', new THREE.Uniform(0)], ['uLampCol', new THREE.Uniform(new V(1.0, 0.6, 0.28))], ['uRimDir', new THREE.Uniform(new THREE.Vector2(0.6, 0.8))], ['uRimCol', new THREE.Uniform(new V(1, 0.8, 0.6))], ['uInkStrength', new THREE.Uniform(0.92)], ['uInk', new THREE.Uniform(new V(0.06, 0.05, 0.1))],
+        ['uInkColorK', new THREE.Uniform(0.3)], ['uRimK', new THREE.Uniform(0)], ['uLamp', new THREE.Uniform(Array.from({ length: 16 }, () => new THREE.Vector4()))], ['uLampN', new THREE.Uniform(0)], ['uLampCol', new THREE.Uniform(new V(1.0, 0.6, 0.28))], ['uRimDir', new THREE.Uniform(new THREE.Vector2(0.6, 0.8))], ['uRimCol', new THREE.Uniform(new V(1, 0.8, 0.6))], ['uInkStrength', new THREE.Uniform(0.92)], ['uInk', new THREE.Uniform(new V(0.06, 0.05, 0.1))],
       ]),
     });
     this.camera = camera;
