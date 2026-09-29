@@ -4,4 +4,6 @@
 export default [
   () => import('./combat.js'),
   () => import('./bars.js'), // bars: music from the supreme bars
+  () => import('./crimes.js'), // crimes:
+  () => import('./police.js'), // police:
 ];
