@@ -15,6 +15,7 @@ import { Sfx } from './audio.js';
 import { Traffic } from './traffic.js';
 import { Drinks, Drunk, DrunkEffect, Voice } from './drinks.js';
 import { clamp } from './config.js';
+import { Actors } from './actors.js'; // actors:
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.has('demo');
@@ -150,6 +151,7 @@ if (params.has('cars')) traffic.max = +params.get('cars');
 const drinks = new Drinks(scene, city);
 const drunk = new Drunk();
 const voice = new Voice($('say'));
+const actors = await Actors.load('models/Xbot.glb', scene, city, { onMaterial: withCSM, max: LOWQ ? 60 : 120 }); // actors:
 for (const m of Object.values(traffic.models)) m.holder.traverse((o) => o.isMesh && withCSM(o.material));
 for (const m of Object.values(drinks.models)) m.traverse((o) => o.isMesh && withCSM(o.material));
 const player = new Player(city);
@@ -451,6 +453,7 @@ function tick(dt) {
     }
   }
   traffic.events.length = 0;
+  actors.update(dt, player); // actors:
   const drank = drinks.update(dt, player, !driving && player.mode !== 'swing' && player.mode !== 'zip');
   if (drank) {
     drunk.drink(drank);
@@ -616,6 +619,7 @@ window.__game = {
     pilot = null;
   },
   traffic,
+  actors, // actors:
   drinks,
   drunk,
   voice,
