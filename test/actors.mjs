@@ -1,7 +1,10 @@
 // People, cops, dogs and bears: the five kinds, walking a street without touching a building or
 // the water, the state machine, pooling and culling, a crowd screenshot and the cost of 120 actors
 // per game tick. Usage: PORT=5212 node test/actors.mjs   (exit code 1 on any failure)
+import { mkdirSync } from 'node:fs';
 import { startServer, launch, open } from './harness.mjs';
+
+mkdirSync('shots', { recursive: true });
 
 const srv = await startServer();
 const browser = await launch();
@@ -257,6 +260,42 @@ try {
     'hit, actor:down and actor:tied reach the event bus',
     /^actor:tied:\d+: hit:\d+:25 hit:\d+:25 hit:\d+:25 actor:down:\d+:$/.test(r.events),
     r.events,
+  );
+
+  // 4b. Every kind takes hits until it is down, can be stunned and tied, and lies lower than it stood.
+  r = await page.evaluate(() => {
+    const g = window.__game, A = g.actors, T = window.__t;
+    const s = T.streets(0, 0, 900)[0];
+    T.stand(s.ax, s.az - 4);
+    T.tick(2);
+    const out = {};
+    for (const kind of ['thug', 'cop', 'civilian', 'dog', 'bear']) {
+      const top = (a) => a.rig.bones.reduce((m, b) => Math.max(m, b.matrixWorld.elements[13]), 0);
+      const a = A.spawn(kind, { x: s.ax, z: s.az }, { exact: true });
+      const o = { maxHp: a.maxHp, stood: +top(a).toFixed(2) };
+      o.stunned = a.stun(0.5) && a.state === 'stunned';
+      T.tick(20);
+      o.recovered = a.state === 'idle' && a.stunT === 0;
+      let hits = 0;
+      while (a.state !== 'down' && hits < 100) (a.hit(10, 'test'), hits++);
+      o.hits = hits;
+      T.tick(30);
+      o.lay = +top(a).toFixed(2);
+      T.tick(30 * 6);
+      o.removed = a.removed;
+      const b = A.spawn(kind, { x: s.ax, z: s.az }, { exact: true });
+      o.tied = b.tie() && b.state === 'tied' && b.rope !== null;
+      T.tick(60);
+      o.stillTied = b.state === 'tied';
+      b.remove();
+      out[kind] = o;
+    }
+    return out;
+  });
+  check(
+    'every kind: stun and recover, tie, hit until down, lie lower, fade out',
+    Object.values(r).every((o) => o.stunned && o.recovered && o.hits === Math.ceil(o.maxHp / 10) && o.lay < o.stood * 0.55 && o.removed && o.tied && o.stillTied),
+    r,
   );
 
   // 5. Pooling, the cap and the distance cull.

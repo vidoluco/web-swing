@@ -859,8 +859,9 @@ export class Actors {
   // True if a body of radius r at (x, z) would be in water or overlap a building footprint.
   blocked(x, z, r = 0.35) {
     if (this.city.isWater(x, z)) return true;
+    const gy = this.groundAt(x, z);
     for (const b of this.city.nearby(x, z, r + 1, _near)) {
-      if (b.kind === 'prop' || b.y0 > 2.5 || b.y1 < 0.9) continue;
+      if (!this._solid(b, gy)) continue;
       if (x < b.minx - r || x > b.maxx + r || z < b.minz - r || z > b.maxz + r) continue;
       if (pointInPrism2D(x, z, b) || closestOnPrism(x, z, b, _cp).d < r) return true;
     }
@@ -869,6 +870,12 @@ export class Actors {
 
   groundAt(x, z) {
     return this.city.groundAt?.(x, z) ?? 0;
+  }
+
+  // Does this prism stand in the way of a walker whose feet are at height `gy`? Roof props, floating
+  // parts and anything lower than a step do not.
+  _solid(b, gy) {
+    return b.kind !== 'prop' && b.y0 < gy + 2.5 && b.y1 > gy + 0.9;
   }
 
   update(dt, player) {
@@ -929,6 +936,14 @@ export class Actors {
 
   clear() {
     for (let i = this.list.length - 1; i >= 0; i--) this.remove(this.list[i]);
+  }
+
+  // Another city (the map choice): everyone goes, the road index starts again on the new data.
+  setCity(city) {
+    this.clear();
+    this.city = city;
+    this.paths = new Paths(city);
+    this.center = null;
   }
 
   stats() {
@@ -1369,7 +1384,7 @@ export class Actors {
     const m = a.radius + (tight ? 0.15 : 0.45), m2 = m * m;
     const walls = [];
     for (const b of this.city.nearby(cx, cz, N * 0.75, _near)) {
-      if (b.kind === 'prop' || b.y0 > 2.5 || b.y1 < 0.9 || b.maxx < x0 - m || b.minx > x0 + N + m || b.maxz < z0 - m || b.minz > z0 + N + m) continue;
+      if (!this._solid(b, this.groundAt((b.minx + b.maxx) / 2, (b.minz + b.maxz) / 2)) || b.maxx < x0 - m || b.minx > x0 + N + m || b.maxz < z0 - m || b.minz > z0 + N + m) continue;
       walls.push(b);
       const i0 = Math.max(0, Math.floor(b.minx - x0)), i1 = Math.min(N - 1, Math.floor(b.maxx - x0));
       const j0 = Math.max(0, Math.floor(b.minz - z0)), j1 = Math.min(N - 1, Math.floor(b.maxz - z0));
@@ -1592,7 +1607,7 @@ export class Actors {
     a.oz = a.pos.z;
     a.ot = this.time || 1e-6;
     a.obst.length = 0;
-    for (const b of this.city.nearby(a.pos.x, a.pos.z, 14, _near)) if (b.kind !== 'prop' && b.y0 < 2.5 && b.y1 > 0.9) a.obst.push(b);
+    for (const b of this.city.nearby(a.pos.x, a.pos.z, 14, _near)) if (this._solid(b, a.pos.y)) a.obst.push(b);
   }
 
   _blockedAt(a, x, z, r) {
