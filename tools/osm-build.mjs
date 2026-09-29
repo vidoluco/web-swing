@@ -517,6 +517,33 @@ for (const g of greens) {
     if (CITY.trees) plant(o, hs, g.kind);
   });
 }
+// Places that OSM does not tag as bars, from tools/extra-pois.json (name, lat, lon, kind: 2 is a supreme bar).
+// Each needs a street that exists in the input and sources on two different sites, otherwise the build stops,
+// so a place whose address is not confirmed cannot get in. An OSM place of the same name within 30 m is replaced.
+{
+  const file = new URL('./extra-pois.json', import.meta.url);
+  const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const host = (s) => new URL(s.url).hostname.replace(/^(www|amp)\./, '');
+  for (const p of (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8'))[outName]?.places : null) || []) {
+    if (new Set((p.sources || []).map(host)).size < 2) throw new Error(`extra place ${p.name}: sources on two different sites are needed`);
+    if (!els.some((e) => e.tags.highway && e.tags.name === p.street)) throw new Error(`extra place ${p.name}: the street ${p.street} is not in the input`);
+    const [x, z] = proj(p);
+    if (!inBox(x, z)) throw new Error(`extra place ${p.name}: outside the city box`);
+    let road = Infinity;
+    for (const r of roads) {
+      for (let i = 1; i < r.pts.length; i++) {
+        const [ax, az] = r.pts[i - 1], [bx, bz] = r.pts[i], L = (bx - ax) ** 2 + (bz - az) ** 2;
+        const t = L ? Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / L)) : 0;
+        road = Math.min(road, Math.hypot(x - ax - t * (bx - ax), z - az - t * (bz - az)));
+      }
+    }
+    if (road > 60) throw new Error(`extra place ${p.name}: no street within 60 m (${Math.round(road)} m)`);
+    const before = pois.length;
+    for (let i = pois.length - 1; i >= 0; i--) if (Math.hypot(pois[i][0] - x, pois[i][1] - z) < 30 && norm(pois[i][3]).includes(norm(p.name))) pois.splice(i, 1);
+    pois.push([x, z, p.kind, p.name]);
+    console.log(`extra place ${p.name}: x ${x}, z ${z}, street ${Math.round(road)} m away, replaces ${before - pois.length + 1} from OSM`);
+  }
+}
 for (const [x, z, kind, name] of pois) if (inBox(x, z)) chunkOf(x, z).p.push([Math.round(x * 10) / 10, Math.round(z * 10) / 10, kind, name]);
 for (const t of trees) if (inBox(t[0], t[1])) chunkOf(t[0], t[1]).t.push(Math.round(t[0] * 10) / 10, Math.round(t[1] * 10) / 10);
 
