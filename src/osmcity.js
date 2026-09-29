@@ -141,6 +141,7 @@ export class OsmCity {
     this.index = index;
     this.prisms = [];
     this.grid = new Map();
+    this.dynamic = []; // living: prisms that move (tram bodies), outside the grid
     this.waterGrid = new Map();
     this.waters = [];
     this.stamp = 0;
@@ -192,6 +193,7 @@ export class OsmCity {
     }
     const rails = this.buildRails(data.rl);
     if (rails) group.add(new THREE.Mesh(rails, this.mats.rail));
+    rec.tram = (data.rl || []).filter((r) => r.tram); // living: the tram lines of this chunk, joined into a network by trams.js
     const areas = this.buildAreas(data.w, data.g);
     for (const [key, geo] of Object.entries(areas)) {
       if (!geo) continue;
@@ -809,6 +811,7 @@ export class OsmCity {
         }
       }
     }
+    for (const p of this.dynamic) if (x + rad > p.minx && x - rad < p.maxx && z + rad > p.minz && z - rad < p.maxz) out.push(p); // living:
     return out;
   }
 
