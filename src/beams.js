@@ -7,7 +7,7 @@ export const HEIGHT = 90;
 const REACH = 45; // metres above the base at which passing through the column still counts
 
 let fadeTex = null;
-function fade() {
+export function fadeTexture() {
   if (!fadeTex) {
     const c = document.createElement('canvas');
     c.width = 4;
@@ -37,7 +37,7 @@ export class Beams {
     let it = this.items.get(id);
     if (!it) {
       const obj = new THREE.Group();
-      const beamMat = new THREE.MeshBasicMaterial({ alphaMap: fade(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      const beamMat = new THREE.MeshBasicMaterial({ alphaMap: fadeTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
       const ringMat = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, HEIGHT, 20, 1, true).translate(0, HEIGHT / 2, 0), beamMat);
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.72, 1, 40).rotateX(-Math.PI / 2), ringMat);

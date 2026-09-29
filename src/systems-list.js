@@ -5,4 +5,7 @@ export default [
   () => import('./respect.js'),
   () => import('./buffs.js'),
   () => import('./missions.js'),
+  () => import('./challenges.js'),
+  () => import('./pets.js'),
+  () => import('./hudpanels.js'),
 ];
