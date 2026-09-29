@@ -237,6 +237,7 @@ ${NOISE}`
   float gp = smoothstep(0.42, 0.62, vnoise(p * 0.011) * 0.75 + vnoise(p * 0.043) * 0.35);
   vec3 turf = mix(vec3(0.13, 0.2, 0.07), vec3(0.24, 0.28, 0.1), vnoise(p * 0.21)) * (0.75 + 0.35 * vnoise(p * 2.3));
   vec3 conc = texture2D(tConcrete, p / 5.0).rgb * vec3(0.62, 0.61, 0.58) * (0.85 + 0.25 * n1);
+  conc *= mix(1.0, 0.45 + texture2D(tConcrete, p / 1.3 + 0.37).r, 0.7 * (1.0 - smoothstep(20.0, 90.0, distance(p, uCamXZ))));
   vec3 oth = mix(cm * (0.85 + 0.3 * n3), mix(conc, turf, gp), grey);
   // Steep land the map leaves blank is scree and rough grass, not pavement.
   float sl0 = 1.0 - Ng.y;

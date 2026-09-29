@@ -13,13 +13,22 @@ A web-swinging game in the browser over the real Bucharest, rebuilt from the OHM
 | ![Drinks in front of Big Ben Pub](docs/screenshots/bar-pickups.jpg) | ![Drunk: double vision and a line in Romanian](docs/screenshots/drunk.jpg) |
 | A beer and a țuică outside a real bar | Double vision, and a line in Romanian with an Italian subtitle |
 
+Brașov (`?city=brasov`) has the real hills, from the Copernicus DEM:
+
+| | |
+|---|---|
+| ![The old town under the Tâmpa, with the BRAȘOV letters on the ridge](docs/screenshots/brasov-old-town.jpg) | ![Among the giant letters on the Tâmpa](docs/screenshots/brasov-sign.jpg) |
+| The start roof beside Piața Sfatului, the Tâmpa and its letters behind | The letters are solid: they can be climbed and swung from |
+| ![Swinging up the slope towards the Tâmpa](docs/screenshots/brasov-swing-up.jpg) | ![A taxi climbing a street, nose up](docs/screenshots/brasov-car-on-a-hill.jpg) |
+| Swinging up the hill | Cars pitch and roll with the road |
+
 Status: the hero is still the Spider-Man rig. The next round replaces it with Bunica, adds fights, crimes, police and missions, and a second city (Brașov, with its real hills). The design is in `docs/specs/2026-09-29-gameplay-design.md`.
 
 | | |
 |---|---|
 | Play | `npm run play` (builds, serves on http://127.0.0.1:5178/ and opens the browser) |
 | Demo (autopilot) | http://127.0.0.1:5178/?demo |
-| Tests | `node test/physics.mjs`: 12 scripted checks in headless Chromium, exit code 1 on failure. `node test/core.mjs`: the foundation (systems, events, save, hud, map selection). `PORT=n` picks the test server port |
+| Tests | `node test/physics.mjs`: 12 scripted checks in headless Chromium, exit code 1 on failure. `node test/core.mjs`: the foundation (systems, events, save, hud, map selection). `node test/terrain.mjs`: ground, slopes, the Brașov places and letters, and Bucharest staying flat. `PORT=n` picks the test server port |
 | Videos | `node test/showcase.mjs` → `shots/showcase.mp4`; `node test/record.mjs 30` → `shots/preview.mp4` |
 | Frame rate | `node test/perf.mjs demo 30` (real-time, on the GPU) |
 
@@ -33,7 +42,7 @@ Status: the hero is still the Spider-Man rig. The next round replaces it with Bu
 | Space | jump, jump off a wall, release a swing with a boost. In a car: handbrake |
 | E or right click | zip to the point under the crosshair |
 | F | steal the car next to you, or get out |
-| 1 to 9, 0 | Piața Unirii, Parliament, Ateneu, Piața Victoriei, Arcul de Triumf, Herăstrău, Sky Tower, Casa Presei, Arena Națională, Drumul Taberei |
+| 1 to 9, 0 | Piața Unirii, Parliament, Ateneu, Piața Victoriei, Arcul de Triumf, Herăstrău, Sky Tower, Casa Presei, Arena Națională, Drumul Taberei. In Brașov: Piața Sfatului, Biserica Neagră, Strada Sforii, the letters on the Tâmpa, Turnul Alb, Bastionul Țesătorilor, Poarta Schei, Gara, Parcul Central, Poiana Brașov |
 | V, M, R | suit, minimap zoom, back to the start roof |
 
 Walk over the drinks in front of bars and kiosks (yellow dots on the minimap): a beer counts one, a țuică two, and it wears off in a few minutes. Stealing, drinking and crashing get a line in Romanian, with an Italian subtitle, spoken by the system's Romanian voice when there is one (Ioana on macOS).
@@ -47,6 +56,8 @@ Walk over the drinks in front of bars and kiosks (yellow dots on the minimap): a
 | Traffic | Up to 60 cars on the OSM roads around you, on the right-hand lane, turning where roads meet, queueing and stopping for you |
 | Drinks | 1,925 real places: 295 bars and pubs (beer and țuică) and kiosks or non-stops (beer), each with its name on a sign |
 | Movement | pendulum on an inelastic rope, anchors on building faces, wall crawl and vault, zip, water respawn |
+| Terrain | Brașov stands on the Copernicus GLO-30 heights (15 m grid, smoothed): a tiled heightfield around you and a coarse mesh to the horizon, grass, forest floor and rock painted by land use and slope, every road, tree and wall draped on it. She runs slower uphill and faster downhill, slides on rock steeper than about 40 degrees, and cars pitch and roll. Bucharest stays flat |
+| Brașov | ten places on the number keys, a start roof beside Piața Sfatului looking at the Tâmpa, the BRAȘOV letters (25 m tall) on the Tâmpa that can be climbed and swung from, cooler light and closer fog |
 | Rendering | CSM shadows, N8AO, ACES tone mapping, SMAA, interior-mapped windows, PBR ground, double vision when drunk |
 
 URL flags: `?lowq` for weaker GPUs, `?fps` for the frame rate, `?cars=N` for traffic density, `?spot=0..9` to start at a place, `?seed=N` for the random generator, `?city=<id>` to skip the map selection (`bucharest`, `brasov`, or `center` for the smaller centre-only build of Bucharest). `?demo` and `?shot=` open Bucharest without the selection.
@@ -56,7 +67,7 @@ URL flags: `?lowq` for weaker GPUs, `?fps` for the frame rate, `?cars=N` for tra
 | Piece | How |
 |---|---|
 | Map selection | a plain start shows a card per city (București, Brașov), each with a picture from the game (`public/ui/`, retaken with `node test/citycards.mjs <id>`). A card is a link to `?city=<id>`, so nothing is built before the choice; the last choice is saved. The pause screen has Cambia mappa |
-| Cities | `?city=<id>` loads `public/city/<id>/` and `CITIES[id]` from `src/cities.js`: `label`, `tagline`, `image`, `cardView`, `spots` (number keys), `waypoints` (demo route), `spawnFacing`. Coordinates are x east, y up, z south, in metres from the origin in `index.json`. `city.cityId`, `city.origin` and `city.groundAt(x, z)` (0 on flat cities) are the per-city hooks |
+| Cities | `?city=<id>` loads `public/city/<id>/` and `CITIES[id]` from `src/cities.js`: `label`, `tagline`, `image`, `cardView`, `spots` (number keys), `waypoints` (demo route), `spawnFacing`, and for a city with relief `spawn`, `sign`, `trees`, `atmosphere`. Coordinates are x east, y up, z south, in metres from the origin in `index.json`. `city.cityId`, `city.origin` and `city.groundAt(x, z)` (0 on flat cities), `city.groundNormalAt` and `city.slopeAt` are the per-city hooks. The terrain lives in `src/terrain.js` (heights, mesh, material) and the letters in `src/hillsign.js`; the rules for draping things on it are in `docs/city-data-format.md` |
 | Systems | a system is `src/<name>.js` exporting `create(game)`, which returns `{ name, init?(), update(dt), onCityChange?(id), dispose?() }`. `src/systems-list.js` lists them one line each, `() => import('./name.js'),`, in update order. Once every system exists `init` runs, then `onCityChange` with the city, then `update` on each tick after the player, traffic and drinks and before drawing. One that throws is logged once and skipped. `game.systems.add(system)` and `remove(name)` do the same by hand, for tests |
 | game | `scene camera renderer params cityId city player hero traffic drinks drunk voice input events actors hud save minimap sfx time rng systems`, also `window.__game` next to the test hooks (`advance`, `simulate`, `state`, `setInput`, `goTo`, ...). `time` is game seconds, `rng` is seeded (`?seed=N`), `actors` stays null until `src/actors.js` lands |
 | Events | `game.events.on(name, fn)` returns the function that unsubscribes, `emit(name, payload)`. The core emits `car:stolen` and `city:change`; the systems emit the rest |

@@ -5,7 +5,7 @@
 //   spawnFacing  the start roof is chosen on the side of this point, looking at it
 //   image      screenshot on the map selection card
 //   cardView   camera for that screenshot, node test/citycards.mjs <id>: x y z, then the x z it looks at (and optionally its y)
-//   spawn, sign, atmosphere   only the cities with relief (see brasov)
+//   spawn, sign, trees, atmosphere   optional, for a city with relief (see brasov)
 const bucharest = {
   label: 'București',
   tagline: 'Piața Unirii, il Parlamento e i viali fra i blocchi',
@@ -33,6 +33,7 @@ const bucharest = {
 // on the ground looking that way instead of on a roof.
 //   spawn   where the start roof is looked for, x z and radius: the flat roof beside Piata Sfatului
 //   sign    the BRASOV letters on the Tampa (src/hillsign.js): row centre, the way they look, letter height
+//   trees   crown and trunk colour, darker than the plane trees of Bucharest
 //   atmosphere  cooler light and closer fog than Bucharest (main.js)
 const brasov = {
   label: 'Brașov',
@@ -56,7 +57,7 @@ const brasov = {
   spawn: { x: 20, z: 36, r: 120 },
   spawnFacing: [327.7, 943.3], // the summit of the Tampa
   sign: { text: 'BRAȘOV', x: 404.3, z: 883.1, face: [-0.266, -0.964], height: 25 },
-  treeTint: 0x86a57a, // the crowns are darker than Bucharest's plane trees
+  trees: { crown: 0x86a57a, trunk: 0x4a3f34 }, // colours of the crowns and trunks of the woods
   atmosphere: { fogNear: 700, fogFar: 4200, fogColor: 0xaebfd2, sun: 3.0, sunColor: 0xe6edff, skyLight: 0xc4d8ff, turbidity: 2.4, rayleigh: 1.7 },
 };
 

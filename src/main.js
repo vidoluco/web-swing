@@ -159,7 +159,7 @@ composer.addPass(new EffectPass(camera, new SMAAEffect()));
 setLoading('Carico le texture…');
 const textures = loadTextures('textures');
 setLoading(`Ricostruisco ${cfg.label}…`);
-const city = await OsmCity.load(`city/${cityId}`, scene, envMap, textures, (p) => setLoading(`Ricostruisco ${cfg.label}… ${Math.round(p * 100)}%`), cfg.spawnFacing, { sign: cfg.sign, spawn: cfg.spawn, treeTint: cfg.treeTint }).catch(async (e) => {
+const city = await OsmCity.load(`city/${cityId}`, scene, envMap, textures, (p) => setLoading(`Ricostruisco ${cfg.label}… ${Math.round(p * 100)}%`), cfg.spawnFacing, { sign: cfg.sign, spawn: cfg.spawn, trees: cfg.trees }).catch(async (e) => {
   console.error(e);
   await stopWith(`Mappa non disponibile: ${cfg.label}`);
 });

@@ -118,7 +118,11 @@ export class OsmCity {
     }
     if (city.terrain) city.attachTerrain(textures); // terrain:
     if (options.sign && city.terrain) city.sign = new HillSign(city, options.sign); // terrain:
-    if (options.treeTint !== undefined) city.mats.crown.color.set(options.treeTint); // terrain: darker crowns
+    if (options.trees) {
+      // terrain: the woods of a mountain city are darker than the plane trees of Bucharest
+      city.mats.crown.color.set(options.trees.crown);
+      city.mats.trunk.color.set(options.trees.trunk);
+    }
     // The first ring around the origin is loaded up front so the start tower exists.
     await city.streamAround(0, 0, 1100, onProgress);
     city.finish(spawnFacing, options.spawn);
