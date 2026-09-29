@@ -57,7 +57,18 @@ Bunica ha una barra della salute che si ricarica fuori dal combattimento. A zero
 
 **Sfide.** 5 gare a checkpoint fra i monumenti con tempi oro, argento e bronzo, e 50 borcane di zacuscă nascosti su tetti e monumenti da raccogliere.
 
-**Bonus speciali: le PET da 2,5 litri** (idea di Ludovico, 29/09: "bottiglie in PET tipo Neumarkt da 2,5 litri"). Bottiglie di birra in PET da 2,5 litri, come quelle che si vedono in ogni chiosco rumeno, sparse per la città come raccoglibili rari: una luce dorata le rende riconoscibili da lontano, stanno su tetti, davanti ai non-stop e ai chioschi veri dei dati OSM, dietro le missioni e sopra i monumenti (una ventina per città, deterministiche e tutte raggiungibili). Il modello è costruito nel codice (bottiglia alta con la base a petali, tappo blu, etichetta), con un'etichetta inventata ("Bere Blondă, 2,5 L", colori che ricordano quelle vere) e mai il nome o il logo di una marca vera. Prenderne una dà: salute piena, **Turbo** per 30 secondi (swing più veloce, salto più alto, papuc che colpisce doppio) e due gradi di sbronza, con la battuta `pet` ("Bere la PET: patrimoniu național!"). Un contatore nell'HUD, salvato sotto `pet`, e ogni 10 bottiglie sbloccano un colore del basma e Respect extra. Le PET sono un raccoglibile a parte dai borcane di zacuscă.
+**Bonus speciali: tutte le bottiglie in PET** (idea di Ludovico, 29/09: "bottiglie in PET tipo Neumarkt da 2,5 litri, e tutte quelle in PET, non solo Neumarkt"). Come in ogni chiosco rumeno, non solo la birra: bottiglie di plastica di ogni tipo e misura, sparse per la città come raccoglibili rari, con una luce del colore del contenuto che le rende riconoscibili da lontano. Stanno su tetti, davanti ai non-stop e ai chioschi veri dei dati OSM, dietro le missioni e sopra i monumenti (una ventina in tutto per città, deterministiche e tutte raggiungibili). Sei tipi, ognuno con il suo effetto per 30 secondi:
+
+| PET | Contenuto | Effetto | Sbronza |
+|---|---|---|---|
+| Bere 2,5 L (la "Neumarkt") | birra bionda dorata | **Turbo**: swing più veloce, salto più alto, papuc doppio | +2 |
+| Vin la PET 2 L | vino rosso di casa | **Scut**: metà dei danni | +2 |
+| Țuică la PET 1,5 L | țuică trasparente | **Foc**: il papuc lanciato è infuocato e scaraventa i nemici | +3 |
+| Cola 2 L | cola scura | **Energie**: corsa e arrampicata più veloci | 0 |
+| Apă plată 1,5 L | acqua | **Trezire**: azzera la sbronza, cura un quarto della salute | azzera |
+| Suc de portocale 2 L | succo | cura metà della salute | 0 |
+
+La birra e il vino sono i più comuni, la țuică è rara. I modelli sono costruiti nel codice (bottiglia alta con la base a petali, tappo, etichetta, misure diverse), con etichette **inventate** dai colori che ricordano quelle vere, mai il nome o il logo di una marca vera. Ogni tipo ha la sua battuta (`pet.beer`, `pet.wine`, `pet.tuica`, `pet.cola`, `pet.water`, `pet.juice`; per la birra "Bere la PET: patrimoniu național!"). Un contatore nell'HUD, salvato sotto `pet` con il conteggio per tipo; ogni 10 bottiglie raccolte sbloccano un colore del basma e Respect extra. Le PET sono un raccoglibile a parte dai borcane di zacuscă.
 
 **Respect.** Punti da crimini fermati, missioni, sfide e borcane; 10 livelli. I livelli sbloccano un filo più lungo, più salute, il doppio lancio del papuc e nuovi colori del basma. I progressi restano salvati nel browser.
 
