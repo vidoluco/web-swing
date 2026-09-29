@@ -3,11 +3,13 @@
 //   spots      name and position of the places on the number keys 1 to 9 and 0
 //   waypoints  route of the ?demo autopilot
 //   spawnFacing  the start roof is chosen on the side of this point, looking at it
-//   image      screenshot on the map selection card (node test/citycards.mjs <id> takes it)
+//   image      screenshot on the map selection card
+//   cardView   camera for that screenshot, node test/citycards.mjs <id>: x y z, then the x z it looks at
 const bucharest = {
   label: 'București',
   tagline: 'Piața Unirii, il Parlamento e i viali fra i blocchi',
   image: 'ui/city-bucharest.jpg',
+  cardView: [800, 240, 60, 350, 30], // along Bd. Unirii to the Palace of Parliament
   spots: [
     ['Piața Unirii', 0, 0],
     ['Palatul Parlamentului', -1218, -68],
@@ -30,7 +32,8 @@ export const CITIES = {
   brasov: {
     label: 'Brașov',
     tagline: 'Il Centrul Vechi sotto la Tâmpa, fra i monti',
-    image: 'ui/city-brasov.jpg',
+    image: 'ui/city-brasov.jpg', // PLACEHOLDER picture until the Brasov data exists: then node test/citycards.mjs brasov
+    cardView: null,
     spots: [],
     waypoints: [],
     spawnFacing: null,

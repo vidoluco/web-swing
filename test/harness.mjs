@@ -17,7 +17,9 @@ export async function launch() {
     args: gl === 'swiftshader' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--use-angle=metal', '--ignore-gpu-blocklist', '--enable-gpu'],
   });
 }
+// Without a city in the query the page opens on the map selection, so tests get Bucharest unless they ask otherwise.
 export async function open(browser, query, errors, w = 1280, h = 720) {
+  if (!/(^|&)city=/.test(query)) query = [query, 'city=bucharest'].filter(Boolean).join('&');
   const page = await browser.newPage({ viewport: { width: w, height: h } });
   page.on('console', (m) => {
     if (['error', 'warning'].includes(m.type()) && !/GPU stall|GL Driver/.test(m.text())) errors.push(`[${query}] ${m.type()}: ${m.text().slice(0, 300)}`);
