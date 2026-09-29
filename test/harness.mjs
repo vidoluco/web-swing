@@ -3,7 +3,7 @@ import { chromium } from 'playwright-core';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 
-export const PORT = 5199;
+export const PORT = +(process.env.PORT || 5199);
 export async function startServer() {
   const srv = spawn(process.execPath, ['tools/serve.mjs', String(PORT)], { stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise((ok) => srv.stdout.once('data', ok));
